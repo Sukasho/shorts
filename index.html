@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>スクロール視聴実験</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: 設定画面（実験者用）→ 全画面の縦スクロール視聴 → 終了画面（ログ書き出し）。暗い画面で動画に集中させる */
+:root{
+  --bg:#0e1013; --surface:#171a1f; --fg:#eceae4; --muted:#9a9a96; --line:#2a2e35;
+  --rel:#e8a33d; --unrel:#5fa8d3; --on-accent:#1a1307;
+  --font:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic","Noto Sans JP",system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
+*{box-sizing:border-box}
+h1{font-size:1.5rem;line-height:1.3;margin:0;text-wrap:balance}
+.wrap{max-width:560px;margin:0 auto;padding-block:24px 40px;display:flex;flex-direction:column;gap:20px}
+.lead{color:var(--muted);margin:4px 0 0;font-size:.9rem}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted);min-width:0}
+input[type=text],input[type=number]{background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;
+  padding:10px 12px;font:inherit;font-size:1rem;width:100%;min-width:0}
+input:focus-visible,button:focus-visible,summary:focus-visible,textarea:focus-visible{outline:2px solid var(--rel);outline-offset:2px}
+.check{flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:.9rem}
+.plan{display:flex;flex-direction:column;gap:8px}
+.plan h2,.sec h2{font-size:.8rem;font-weight:500;color:var(--muted);margin:0;letter-spacing:.06em}
+.strip{display:flex;gap:2px;height:28px}
+.strip i{flex:1 1 0;min-width:0;border-radius:2px;background:var(--rel)}
+.strip i.u{background:var(--unrel)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.8rem;color:var(--muted)}
+.legend b{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.stat{font-variant-numeric:tabular-nums;font-size:.9rem}
+button{font:inherit;cursor:pointer}
+.btn{background:var(--rel);color:var(--on-accent);border:0;border-radius:8px;padding:14px 20px;font-weight:700;font-size:1.05rem}
+.btn.sub{background:var(--surface);color:var(--fg);border:1px solid var(--line);font-weight:500;font-size:.95rem;padding:10px 14px}
+details{border:1px solid var(--line);border-radius:8px;padding:10px 14px;background:var(--surface)}
+summary{cursor:pointer;font-size:.9rem}
+details p,details pre{font-size:.85rem;color:var(--muted);margin:10px 0 0}
+pre{font-family:var(--mono);white-space:pre-wrap;overflow-x:auto;background:var(--bg);padding:10px;border-radius:6px;color:var(--fg)}
+
+/* 全画面フィード */
+.screen{position:fixed;inset:0;background:var(--bg);z-index:5}
+.feed{position:absolute;inset:0;overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.feed::-webkit-scrollbar{display:none}
+.slide{position:relative;height:100%;width:100%;scroll-snap-align:start;scroll-snap-stop:always;overflow:hidden;background:#000}
+.slide iframe,.slide video{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:cover;pointer-events:none}
+.demo{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center}
+.demo .t{font-size:clamp(1.6rem,7vw,2.4rem);font-weight:700;line-height:1.25;text-wrap:balance;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.35)}
+.demo .s{font-size:.85rem;color:rgba(255,255,255,.75)}
+.demo .bar{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,255,255,.2)}
+.demo .bar i{display:block;height:100%;background:#fff;transform-origin:left;transform:scaleX(0)}
+.hud{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none;
+  padding:calc(8px + env(safe-area-inset-top,0px)) max(8px,env(safe-area-inset-left,0px)) 0 max(8px,env(safe-area-inset-left,0px));z-index:6}
+.dbg{font-family:var(--mono);font-size:.7rem;line-height:1.4;background:rgba(0,0,0,.6);color:#fff;border-radius:6px;padding:6px 8px;font-variant-numeric:tabular-nums;white-space:pre}
+.stop{pointer-events:auto;background:rgba(0,0,0,.35);color:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.25);border-radius:6px;
+  min-width:44px;min-height:44px;font-size:.75rem;margin-left:auto}
+.end{overflow-y:auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.end .wrap{padding-top:calc(24px + env(safe-area-inset-top,0px));padding-bottom:calc(40px + env(safe-area-inset-bottom,0px))}
+textarea{width:100%;min-height:180px;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:10px;font-family:var(--mono);font-size:.72rem;resize:vertical}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+</head><body>
+<main id="setup" class="wrap">
+  <header>
+    <h1>スクロール視聴実験</h1>
+    <p class="lead">縦にスクロールして次の動画を見る画面です。後ろにいくほど、お題と関係のない動画の割合が増えます。</p>
+  </header>
+  <p id="fileWarn" class="lead" style="color:var(--rel)" hidden>このファイルを直接開いているため、YouTubeの動画は再生されません（エラー153）。Webに置くか、パソコンで簡単なサーバーを起動して、http:// のアドレスで開いてください。</p>
+
+  <section class="grid" aria-label="設定">
+    <label for="pid">参加者ID<input id="pid" type="text" value="P01" autocomplete="off"></label>
+    <label for="limit">視聴時間（分）<input id="limit" type="number" value="30" min="1" max="120" inputmode="numeric"></label>
+    <label for="n">動画の本数<input id="n" type="number" value="14" min="5" max="200" inputmode="numeric"></label>
+    <label for="pmax">最後の割合（関係ない%）<input id="pmax" type="number" value="90" min="0" max="100" inputmode="numeric"></label>
+    <label for="k">はじめの関係ある動画（本）<input id="k" type="number" value="2" min="0" max="50" inputmode="numeric"></label>
+    <label for="dur">試作動画の長さ（秒）<input id="dur" type="number" value="8" min="2" max="120" inputmode="numeric"></label>
+  </section>
+  <label class="check" for="debug"><input id="debug" type="checkbox" checked>実験者用の表示を出す</label>
+
+  <section class="plan" aria-label="動画の並び">
+    <h2>この設定での並び（左が1本目）</h2>
+    <div id="strip" class="strip" role="img" aria-label="動画の並び"></div>
+    <div class="legend"><span><b style="background:var(--rel)"></b>お題に関係ある</span><span><b style="background:var(--unrel)"></b>関係ない</span></div>
+    <div id="stat" class="stat"></div>
+  </section>
+
+  <button id="start" class="btn" type="button">視聴を始める</button>
+
+  <details>
+    <summary>本物の動画に差し替えるには</summary>
+    <p>ファイル先頭付近の <code>REAL</code> に、動画のIDを並べます。今は、関係ある5本と関係ない6本が入っています。本番は、各30本ほど必要です。このファイルは、Webに置いたときだけ動画が再生されます。</p>
+    <pre>const REAL = {
+  related:   [{type:'file', src:'videos/r01.mp4'},
+              {type:'youtube', id:'動画ID'}],
+  unrelated: [{type:'file', src:'videos/u01.mp4'}]
+};</pre>
+  </details>
+</main>
+
+<div id="feedScreen" class="screen" hidden>
+  <div id="feed" class="feed" tabindex="-1"></div>
+  <div class="hud"><div id="dbg" class="dbg" hidden></div><button id="stop" class="stop" type="button" aria-label="実験を終了する">終了</button></div>
+</div>
+
+<div id="endScreen" class="screen end" hidden>
+  <div class="wrap">
+    <h1>視聴を終了しました</h1>
+    <div id="endStat" class="stat"></div>
+    <section class="sec" style="display:flex;flex-direction:column;gap:8px">
+      <h2>記録（CSV）</h2>
+      <textarea id="csv" readonly aria-label="記録のCSV"></textarea>
+      <div class="row">
+        <button id="copy" class="btn sub" type="button">コピーする</button>
+        <button id="dl" class="btn sub" type="button">ファイルに保存</button>
+      </div>
+      <div id="msg" class="stat" aria-live="polite"></div>
+    </section>
+    <button id="again" class="btn sub" type="button">設定にもどる</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+// 本物の動画を使うときはここに並べる（空なら試作用の動画）
+const REAL = {
+  related: [
+    { type: 'youtube', id: '3PfKqWSsHyc' }, { type: 'youtube', id: 'nFihqqgZiws' }, { type: 'youtube', id: 'H9i4YfKhkTI' },
+    { type: 'youtube', id: 'hdTpRtfYTEs' }, { type: 'youtube', id: 'TUW3QV1mWIk' }
+  ],
+  unrelated: [
+    { type: 'youtube', id: 'pWPzUwi34rs' }, { type: 'youtube', id: 'MMsYpJp_GCA' }, { type: 'youtube', id: '7csnhblKvic' },
+    { type: 'youtube', id: 'F5c1sctaQnk' }, { type: 'youtube', id: 'Fykfl5XsWYQ' }, { type: 'youtube', id: 'xqgio43j5i4' }
+  ]
+};
+const DEMO_REL = ['お湯の温度','豆の挽き目','ドリッパーの選び方','蒸らしの時間','注ぐ速さ','ペーパーの湿らせ方','豆の量と比率','淹れたあとの保存','スケールの使い方','フィルターの種類'];
+const DEMO_UNREL = ['猫のいる暮らし','筋トレ10分','京都の街歩き','ゲーム実況','ダンスのコツ','棚をDIY','スニーカー紹介','星空タイムラプス','犬の散歩','カレーの作り方','ギター弾いてみた','電車の車窓'];
+const TASK = 'お題：ハンドドリップでコーヒーを淹れる';
+
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, Number.isFinite(v) ? v : a));
+
+function hashSeed(s){ let h = 2166136261; for (const c of s){ h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+function rng(a){ return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function shuffle(arr, r){ const a = arr.slice(); for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+// 関係ない動画の割合を、k本目以降 0 → pMax へ直線的に増やす。誤差を足し込んで、割合どおりの本数になるように並べる
+function planKinds(n, k, pMax){
+  const kinds = []; let acc = 0;
+  for (let i = 0; i < n; i++){
+    const p = i < k ? 0 : pMax * (i - k) / Math.max(1, n - 1 - k);
+    acc += p;
+    if (acc >= 1){ kinds.push('unrelated'); acc -= 1; } else kinds.push('related');
+  }
+  return kinds;
+}
+
+function readCfg(){
+  return { pid: $('pid').value.trim() || 'P00', n: clamp(+$('n').value, 5, 200), limit: clamp(+$('limit').value, 1, 120),
+    pmax: clamp(+$('pmax').value, 0, 100) / 100, k: clamp(+$('k').value, 0, 50), dur: clamp(+$('dur').value, 2, 120), debug: $('debug').checked };
+}
+
+function renderPlan(){
+  const c = readCfg(), kinds = planKinds(c.n, c.k, c.pmax);
+  $('strip').innerHTML = kinds.map(k => '<i class="' + (k === 'unrelated' ? 'u' : '') + '"></i>').join('');
+  const u = kinds.filter(k => k === 'unrelated').length, tail = kinds.slice(-10), tu = tail.filter(k => k === 'unrelated').length;
+  $('stat').textContent = '関係ない動画：' + u + ' / ' + c.n + '本　最後の10本のうち ' + tu + '本';
+}
+
+function buildItems(c){
+  const r = rng(hashSeed(c.pid)), kinds = planKinds(c.n, c.k, c.pmax);
+  const demo = (list, kind) => list.map((t, i) => ({ kind, type: 'demo', id: kind[0] + String(i + 1).padStart(2, '0'), title: t }));
+  const pool = {
+    related: REAL.related.length ? REAL.related.map((x, i) => Object.assign({ kind: 'related', title: x.title || '', id: x.id || x.src || 'r' + (i + 1) }, x)) : demo(DEMO_REL, 'related'),
+    unrelated: REAL.unrelated.length ? REAL.unrelated.map((x, i) => Object.assign({ kind: 'unrelated', title: x.title || '', id: x.id || x.src || 'u' + (i + 1) }, x)) : demo(DEMO_UNREL, 'unrelated')
+  };
+  const order = { related: shuffle(pool.related, r), unrelated: shuffle(pool.unrelated, r) }, pos = { related: 0, unrelated: 0 };
+  return kinds.map((kind, index) => {
+    const list = order[kind], base = list[pos[kind] % list.length]; pos[kind]++;
+    return Object.assign({}, base, { index, kind, round: Math.floor((pos[kind] - 1) / list.length) });
+  });
+}
+
+/* ---- プレーヤー（試作用 / 動画ファイル / YouTube） ---- */
+class DemoPlayer {
+  constructor(item, host, dur, onEnded){
+    this.dur = dur * 1000; this.t = 0; this.onEnded = onEnded;
+    const hue = item.kind === 'related' ? 28 + (item.index * 7) % 18 : 190 + (item.index * 37) % 120;
+    host.innerHTML = '<div class="demo" style="background:linear-gradient(160deg,hsl(' + hue + ' 55% 34%),hsl(' + (hue + 25) + ' 60% 16%))">' +
+      '<div class="s">' + TASK + '</div><div class="t"></div><div class="s">試作用の動画（' + dur + '秒でくり返し）</div><div class="bar"><i></i></div></div>';
+    host.querySelector('.t').textContent = item.title;
+    this.bar = host.querySelector('.bar i');
+  }
+  play(){ this.t = 0; this.last = performance.now(); const tick = now => { this.t += now - this.last; this.last = now;
+      if (this.t >= this.dur){ this.t = 0; this.onEnded(); } this.bar.style.transform = 'scaleX(' + (this.t / this.dur) + ')'; this.raf = requestAnimationFrame(tick); };
+    this.raf = requestAnimationFrame(tick); }
+  pause(){ cancelAnimationFrame(this.raf); }
+}
+class FilePlayer {
+  constructor(item, host, dur, onEnded){
+    this.v = document.createElement('video'); this.v.src = item.src; this.v.playsInline = true; this.v.preload = 'auto';
+    this.v.addEventListener('ended', () => { onEnded(); this.play(); }); host.appendChild(this.v);
+  }
+  play(){ this.v.currentTime = 0; const p = this.v.play(); if (p && p.catch) p.catch(() => {}); }
+  pause(){ this.v.pause(); }
+}
+let ytLoading = null;
+function loadYT(){
+  if (ytLoading) return ytLoading;
+  ytLoading = new Promise(res => { if (window.YT && window.YT.Player) return res();
+    const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; window.onYouTubeIframeAPIReady = () => res(); document.head.appendChild(s); });
+  return ytLoading;
+}
+class YTPlayer {
+  constructor(item, host, dur, onEnded){ this.item = item; this.host = host; this.onEnded = onEnded; this.want = false; this.p = null; this.ready = null; }
+  ensure(){
+    if (this.ready) return this.ready;
+    this.ready = loadYT().then(() => new Promise(res => { const d = document.createElement('div'); this.host.appendChild(d);
+      this.tap = document.createElement('button'); this.tap.type = 'button'; this.tap.hidden = true; this.tap.textContent = 'タップして再生';
+      this.tap.style.cssText = 'position:absolute;inset:0;width:100%;background:rgba(0,0,0,.55);color:#fff;border:0;font:inherit;font-size:1.1rem;z-index:2';
+      this.tap.addEventListener('click', () => { this.tap.hidden = true; this.p.seekTo(0); this.p.playVideo(); });
+      this.host.appendChild(this.tap);
+      this.p = new window.YT.Player(d, { videoId: this.item.id, playerVars: { playsinline: 1, controls: 0, rel: 0, modestbranding: 1, fs: 0, disablekb: 1, iv_load_policy: 3 },
+        events: { onReady: () => res(), onAutoplayBlocked: () => { if (this.want) this.tap.hidden = false; },
+          onStateChange: e => { if (e.data === 1) this.tap.hidden = true; if (e.data === 0){ this.onEnded(); this.p.seekTo(0); this.p.playVideo(); } } } }); }));
+    return this.ready;
+  }
+  play(){ this.want = true; this.ensure().then(() => { if (this.want){ this.p.seekTo(0); this.p.playVideo(); } }); }
+  pause(){ this.want = false; if (this.p && this.p.pauseVideo) this.p.pauseVideo(); }
+}
+
+/* ---- セッション ---- */
+let S = null;
+function log(event, extra){
+  if (!S) return;
+  S.events.push(Object.assign({ t_epoch_ms: Date.now(), t_rel_s: ((performance.now() - S.t0) / 1000).toFixed(3), event }, extra || {}));
+}
+function activate(i){
+  if (!S || S.ended || i === S.active) return;
+  const from = S.active;
+  if (from >= 0) leave(from);
+  S.active = i; const it = S.items[i]; S.enteredAt = performance.now();
+  log('video_show', { index: i, video_id: it.id, kind: it.kind, type: it.type, from_index: from >= 0 ? from : '', note: from >= 0 ? (i > from ? 'down' : 'up') : 'first' });
+  S.players[i].play();
+  updateDbg();
+}
+function leave(i){
+  const it = S.items[i], dwell = (performance.now() - S.enteredAt) / 1000;
+  S.players[i].pause();
+  log('video_leave', { index: i, video_id: it.id, kind: it.kind, type: it.type, dwell_s: dwell.toFixed(3), completed: S.endedCount[i] > 0 ? 1 : 0 });
+}
+function updateDbg(){
+  if (!S || !S.cfg.debug) return;
+  const it = S.items[S.active]; if (!it) return;
+  const el = ((performance.now() - S.t0) / 1000), m = Math.floor(el / 60), s = Math.floor(el % 60);
+  const unrelSoFar = S.items.slice(0, S.active + 1).filter(x => x.kind === 'unrelated').length;
+  $('dbg').textContent = (S.active + 1) + ' / ' + S.items.length + ' 本目\n' + (it.kind === 'related' ? '関係ある' : '関係ない') + '（' + it.type + '）\n経過 ' + m + ':' + String(s).padStart(2, '0') + ' / ' + S.cfg.limit + ':00\n関係ない累計 ' + unrelSoFar + '本';
+}
+function start(){
+  const cfg = readCfg(), items = buildItems(cfg), feed = $('feed');
+  feed.innerHTML = '';
+  S = { cfg, items, players: [], endedCount: items.map(() => 0), events: [], active: -1, ended: false, t0: performance.now(), startedAt: new Date() };
+  items.forEach((it, i) => {
+    const slide = document.createElement('section'); slide.className = 'slide'; slide.dataset.i = i;
+    feed.appendChild(slide);
+    const onEnded = () => { S.endedCount[i]++; log('video_ended', { index: i, video_id: it.id, kind: it.kind, note: 'count=' + S.endedCount[i] }); };
+    const P = it.type === 'file' ? FilePlayer : it.type === 'youtube' ? YTPlayer : DemoPlayer;
+    S.players.push(new P(it, slide, cfg.dur, onEnded));
+  });
+  S.io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting && e.intersectionRatio >= 0.6) activate(+e.target.dataset.i); }), { root: feed, threshold: [0.6] });
+  feed.querySelectorAll('.slide').forEach(s => S.io.observe(s));
+  $('setup').hidden = true; $('endScreen').hidden = true; $('feedScreen').hidden = false;
+  $('dbg').hidden = !cfg.debug;
+  feed.scrollTop = 0;
+  log('session_start', { note: 'pid=' + cfg.pid + ' n=' + cfg.n + ' limit_min=' + cfg.limit + ' pmax=' + cfg.pmax + ' k=' + cfg.k + ' iso=' + S.startedAt.toISOString() });
+  activate(0);
+  S.timer = setInterval(() => { updateDbg(); if ((performance.now() - S.t0) / 1000 >= cfg.limit * 60) end('time_limit'); }, 250);
+  try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(w => { S.wake = w; }).catch(() => {}); } catch (e) {}
+  try { feed.focus(); } catch (e) {}
+}
+function toCsv(){
+  const cols = ['t_epoch_ms', 't_rel_s', 'event', 'index', 'video_id', 'kind', 'type', 'dwell_s', 'completed', 'from_index', 'note'];
+  const q = v => { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  return [cols.join(',')].concat(S.events.map(e => cols.map(c => q(e[c])).join(','))).join('\n');
+}
+function end(reason){
+  if (!S || S.ended) return;
+  if (S.active >= 0) leave(S.active);
+  S.ended = true; clearInterval(S.timer); S.io.disconnect();
+  S.players.forEach(p => p.pause());
+  log('session_end', { note: reason });
+  try { if (S.wake) S.wake.release(); } catch (e) {}
+  const shown = new Set(S.events.filter(e => e.event === 'video_show').map(e => e.index)), done = S.endedCount.filter(n => n > 0).length;
+  const un = S.items.filter(x => shown.has(x.index) && x.kind === 'unrelated').length;
+  $('endStat').textContent = '参加者 ' + S.cfg.pid + '　見た動画 ' + shown.size + '本（関係ない動画 ' + un + '本）　最後まで再生 ' + done + '本';
+  $('csv').value = toCsv(); $('msg').textContent = '';
+  $('feedScreen').hidden = true; $('endScreen').hidden = false;
+}
+
+$('start').addEventListener('click', start);
+$('stop').addEventListener('click', () => end('manual'));
+$('again').addEventListener('click', () => { $('endScreen').hidden = true; $('setup').hidden = false; });
+$('copy').addEventListener('click', () => {
+  const ta = $('csv');
+  const fallback = () => { ta.focus(); ta.select(); $('msg').textContent = '選択しました。コピーしてください。'; };
+  try { navigator.clipboard.writeText(ta.value).then(() => { $('msg').textContent = 'コピーしました。'; }, fallback); } catch (e) { fallback(); }
+});
+$('dl').addEventListener('click', () => {
+  try {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + $('csv').value], { type: 'text/csv' }));
+    a.download = 'viewing_log_' + (S ? S.cfg.pid : 'P00') + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+    $('msg').textContent = '保存を試しました。保存されないときは、コピーして使ってください。';
+  } catch (e) { $('msg').textContent = 'この画面では保存できません。コピーして使ってください。'; }
+});
+['pid','n','limit','pmax','k','dur'].forEach(id => $(id).addEventListener('input', renderPlan));
+if (location.protocol === 'file:' && [].concat(REAL.related, REAL.unrelated).some(x => x.type === 'youtube')) $('fileWarn').hidden = false;
+renderPlan();
+window.__feedTest = { get S(){ return S; }, end, activate };
+})();
+</script>
+</body></html>
