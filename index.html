@@ -46,6 +46,9 @@ pre{font-family:var(--mono);white-space:pre-wrap;overflow-x:auto;background:var(
 .feed{position:absolute;inset:0;overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .feed::-webkit-scrollbar{display:none}
 .slide{position:relative;height:100%;width:100%;scroll-snap-align:start;scroll-snap-stop:always;overflow:hidden;background:#000}
+.ytlayer{position:absolute;inset:0;background:#000;visibility:hidden;pointer-events:none;z-index:3}
+.ytlayer iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.yttap{position:absolute;inset:0;width:100%;background:rgba(0,0,0,.55);color:#fff;border:0;font:inherit;font-size:1.1rem;pointer-events:auto;z-index:2}
 .slide iframe,.slide video{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:cover;pointer-events:none}
 .demo{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center}
 .demo .t{font-size:clamp(1.6rem,7vw,2.4rem);font-weight:700;line-height:1.25;text-wrap:balance;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.35)}
@@ -215,26 +218,60 @@ function loadYT(){
     const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; window.onYouTubeIframeAPIReady = () => res(); document.head.appendChild(s); });
   return ytLoading;
 }
-class YTPlayer {
-  constructor(item, host, dur, onEnded){ this.item = item; this.host = host; this.onEnded = onEnded; this.want = false; this.p = null; this.ready = null; }
+// YouTubeのプレーヤーは1つだけ作り、動画を差し替えて再生する（最初の1回のタップだけで、以後は自動で再生されやすくなる）
+const YTS = {
+  p: null, ready: null, layer: null, tap: null, owner: null, playing: false, want: false, timer: null,
+  aligned(){ const f = $('feed'); return !S || S.active < 0 || Math.abs(f.scrollTop - S.active * f.clientHeight) < 3; },
   ensure(){
     if (this.ready) return this.ready;
-    this.ready = loadYT().then(() => new Promise(res => { const d = document.createElement('div'); this.host.appendChild(d);
-      this.tap = document.createElement('button'); this.tap.type = 'button'; this.tap.hidden = true; this.tap.textContent = 'タップして再生';
-      this.tap.style.cssText = 'position:absolute;inset:0;width:100%;background:rgba(0,0,0,.55);color:#fff;border:0;font:inherit;font-size:1.1rem;z-index:2';
-      this.tap.addEventListener('click', () => { this.tap.hidden = true; this.p.seekTo(0); this.p.playVideo(); });
-      this.host.appendChild(this.tap);
-      this.p = new window.YT.Player(d, { videoId: this.item.id, playerVars: { playsinline: 1, controls: 0, rel: 0, modestbranding: 1, fs: 0, disablekb: 1, iv_load_policy: 3 },
-        events: { onReady: () => res(), onAutoplayBlocked: () => { if (this.want) this.tap.hidden = false; },
-          onStateChange: e => { if (e.data === 1) this.tap.hidden = true; if (e.data === 0){ this.onEnded(); this.p.seekTo(0); this.p.playVideo(); } } } }); }));
+    this.ready = loadYT().then(() => new Promise(res => {
+      const fs = $('feedScreen'), L = document.createElement('div'); L.className = 'ytlayer'; fs.insertBefore(L, fs.querySelector('.hud'));
+      const d = document.createElement('div'); L.appendChild(d);
+      const t = document.createElement('button'); t.type = 'button'; t.hidden = true; t.className = 'yttap'; t.textContent = 'タップして再生';
+      t.addEventListener('click', () => { t.hidden = true; this.p.playVideo(); });
+      L.appendChild(t); this.layer = L; this.tap = t;
+      this.p = new window.YT.Player(d, { playerVars: { playsinline: 1, controls: 0, rel: 0, modestbranding: 1, fs: 0, disablekb: 1, iv_load_policy: 3 },
+        events: { onReady: () => res(), onAutoplayBlocked: () => this.blocked(), onStateChange: e => this.state(e.data) } });
+    }));
     return this.ready;
-  }
-  play(){ this.want = true; this.ensure().then(() => { if (this.want){ this.p.seekTo(0); this.p.playVideo(); } }); }
-  pause(){ this.want = false; if (this.p && this.p.pauseVideo) this.p.pauseVideo(); }
+  },
+  blocked(){ if (this.want && this.layer){ this.layer.style.visibility = 'visible'; this.tap.hidden = false; } },
+  state(s){
+    if (s === 1){ this.playing = true; this.tap.hidden = true; clearTimeout(this.timer); if (this.aligned()) this.layer.style.visibility = 'visible'; }
+    else if (s === 0){ if (this.want && this.owner){ this.owner.onEnded(); this.p.seekTo(0); this.p.playVideo(); } }
+    else if (s !== 3){ this.playing = false; }
+  },
+  play(owner){
+    this.owner = owner; this.want = true; this.playing = false;
+    if (this.layer){ this.layer.style.visibility = 'hidden'; this.tap.hidden = true; }
+    this.ensure().then(() => {
+      if (!this.want || this.owner !== owner) return;
+      this.p.loadVideoById(owner.item.id);
+      clearTimeout(this.timer); this.timer = setTimeout(() => { if (!this.playing) this.blocked(); }, 1500);
+    });
+  },
+  pause(owner){
+    if (this.owner !== owner) return;
+    this.want = false; clearTimeout(this.timer);
+    if (this.p && this.p.pauseVideo) this.p.pauseVideo();
+    if (this.layer){ this.layer.style.visibility = 'hidden'; this.tap.hidden = true; }
+  },
+  hideTemp(){ if (this.layer && this.want) this.layer.style.visibility = 'hidden'; },
+  showIfReady(){ if (this.layer && this.want && (this.playing || !this.tap.hidden)) this.layer.style.visibility = 'visible'; }
+};
+class YTPlayer {
+  constructor(item, host, dur, onEnded){ this.item = item; this.onEnded = onEnded; }
+  play(){ YTS.play(this); }
+  pause(){ YTS.pause(this); }
 }
 
 /* ---- セッション ---- */
 let S = null;
+function onFeedScroll(){
+  if (!S || S.ended) return;
+  YTS.hideTemp(); clearTimeout(S.sc);
+  S.sc = setTimeout(() => { if (YTS.aligned()) YTS.showIfReady(); }, 150);
+}
 function log(event, extra){
   if (!S) return;
   S.events.push(Object.assign({ t_epoch_ms: Date.now(), t_rel_s: ((performance.now() - S.t0) / 1000).toFixed(3), event }, extra || {}));
@@ -275,6 +312,7 @@ function start(){
   feed.querySelectorAll('.slide').forEach(s => S.io.observe(s));
   $('setup').hidden = true; $('endScreen').hidden = true; $('feedScreen').hidden = false;
   $('dbg').hidden = !cfg.debug;
+  feed.onscroll = onFeedScroll;
   feed.scrollTop = 0;
   log('session_start', { note: 'pid=' + cfg.pid + ' n=' + cfg.n + ' limit_min=' + cfg.limit + ' pmax=' + cfg.pmax + ' k=' + cfg.k + ' iso=' + S.startedAt.toISOString() });
   activate(0);
