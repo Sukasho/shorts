@@ -46,6 +46,9 @@ pre{font-family:var(--mono);white-space:pre-wrap;overflow-x:auto;background:var(
 .feed{position:absolute;inset:0;overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .feed::-webkit-scrollbar{display:none}
 .slide{position:relative;height:100%;width:100%;scroll-snap-align:start;scroll-snap-stop:always;overflow:hidden;background:#000}
+.ytlayer{position:absolute;inset:0;background:#000;visibility:hidden;pointer-events:none;z-index:3}
+.ytlayer iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.yttap{position:absolute;inset:0;width:100%;background:rgba(0,0,0,.55);color:#fff;border:0;font:inherit;font-size:1.1rem;pointer-events:auto;z-index:2}
 .slide iframe,.slide video{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:cover;pointer-events:none}
 .demo{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center}
 .demo .t{font-size:clamp(1.6rem,7vw,2.4rem);font-weight:700;line-height:1.25;text-wrap:balance;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.35)}
@@ -61,6 +64,10 @@ pre{font-family:var(--mono);white-space:pre-wrap;overflow-x:auto;background:var(
 .end .wrap{padding-top:calc(24px + env(safe-area-inset-top,0px));padding-bottom:calc(40px + env(safe-area-inset-bottom,0px))}
 textarea{width:100%;min-height:180px;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:10px;font-family:var(--mono);font-size:.72rem;resize:vertical}
 .row{display:flex;gap:10px;flex-wrap:wrap}
+.btn.sub.on{border-color:var(--rel);color:var(--rel)}
+.sumv{display:grid;grid-template-columns:1fr auto;gap:4px 14px;font-size:.85rem;font-variant-numeric:tabular-nums;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.sumv span:nth-child(odd){color:var(--muted)}
+.sumv span:nth-child(even){text-align:right}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>
 </head><body>
@@ -78,6 +85,7 @@ textarea{width:100%;min-height:180px;background:var(--surface);color:var(--fg);b
     <label for="pmax">最後の割合（関係ない%）<input id="pmax" type="number" value="90" min="0" max="100" inputmode="numeric"></label>
     <label for="k">はじめの関係ある動画（本）<input id="k" type="number" value="2" min="0" max="50" inputmode="numeric"></label>
     <label for="dur">試作動画の長さ（秒）<input id="dur" type="number" value="8" min="2" max="120" inputmode="numeric"></label>
+    <label for="fast">すぐスキップの基準（秒）<input id="fast" type="number" value="3" min="1" max="30" inputmode="numeric"></label>
   </section>
   <label class="check" for="debug"><input id="debug" type="checkbox" checked>実験者用の表示を出す</label>
 
@@ -92,11 +100,12 @@ textarea{width:100%;min-height:180px;background:var(--surface);color:var(--fg);b
 
   <details>
     <summary>本物の動画に差し替えるには</summary>
-    <p>ファイル先頭付近の <code>REAL</code> に、動画のIDを並べます。今は、関係ある5本と関係ない6本が入っています。本番は、各30本ほど必要です。このファイルは、Webに置いたときだけ動画が再生されます。</p>
+    <p>ファイル先頭付近の <code>REAL</code> に、動画のIDを並べます。今は、関係ある5本と関係ない6本が入っています。本番は、各40本ほど必要です。TikTokは、URLの /video/ のあとの数字がIDです。このファイルは、Webに置いたときだけ動画が再生されます。</p>
     <pre>const REAL = {
-  related:   [{type:'file', src:'videos/r01.mp4'},
-              {type:'youtube', id:'動画ID'}],
-  unrelated: [{type:'file', src:'videos/u01.mp4'}]
+  related:   [{type:'youtube', id:'動画ID'},
+              {type:'tiktok', id:'投稿ID（数字）'},
+              {type:'file', src:'videos/r01.mp4'}],
+  unrelated: [{type:'youtube', id:'動画ID'}]
 };</pre>
   </details>
 </main>
@@ -111,11 +120,23 @@ textarea{width:100%;min-height:180px;background:var(--surface);color:var(--fg);b
     <h1>視聴を終了しました</h1>
     <div id="endStat" class="stat"></div>
     <section class="sec" style="display:flex;flex-direction:column;gap:8px">
+      <h2>この視聴の要約</h2>
+      <div id="sumView" class="sumv"></div>
+      <p class="lead" style="margin:0;font-size:.8rem">最後の1本（時間切れや終了ボタンで途中になった動画）は、すぐスキップの割合・最後まで見た割合・滞在時間の中央値には入れていません。</p>
+    </section>
+    <section class="sec" style="display:flex;flex-direction:column;gap:8px">
       <h2>記録（CSV）</h2>
+      <div class="row" role="group" aria-label="記録の種類">
+        <button class="btn sub on" type="button" data-k="events" aria-pressed="true">イベント</button>
+        <button class="btn sub" type="button" data-k="visits" aria-pressed="false">1本ごと</button>
+        <button class="btn sub" type="button" data-k="summary" aria-pressed="false">要約</button>
+      </div>
+      <div id="kindNote" class="stat" style="color:var(--muted);font-size:.8rem"></div>
       <textarea id="csv" readonly aria-label="記録のCSV"></textarea>
       <div class="row">
         <button id="copy" class="btn sub" type="button">コピーする</button>
-        <button id="dl" class="btn sub" type="button">ファイルに保存</button>
+        <button id="dl" class="btn sub" type="button">この表を保存</button>
+        <button id="dlAll" class="btn sub" type="button">3つとも保存</button>
       </div>
       <div id="msg" class="stat" aria-live="polite"></div>
     </section>
@@ -134,7 +155,8 @@ const REAL = {
   ],
   unrelated: [
     { type: 'youtube', id: 'pWPzUwi34rs' }, { type: 'youtube', id: 'MMsYpJp_GCA' }, { type: 'youtube', id: '7csnhblKvic' },
-    { type: 'youtube', id: 'F5c1sctaQnk' }, { type: 'youtube', id: 'Fykfl5XsWYQ' }, { type: 'youtube', id: 'xqgio43j5i4' }
+    { type: 'youtube', id: 'F5c1sctaQnk' }, { type: 'youtube', id: 'Fykfl5XsWYQ' }, { type: 'youtube', id: 'xqgio43j5i4' },
+    { type: 'tiktok', id: '7592914009116953876' }
   ]
 };
 const DEMO_REL = ['お湯の温度','豆の挽き目','ドリッパーの選び方','蒸らしの時間','注ぐ速さ','ペーパーの湿らせ方','豆の量と比率','淹れたあとの保存','スケールの使い方','フィルターの種類'];
@@ -161,7 +183,7 @@ function planKinds(n, k, pMax){
 
 function readCfg(){
   return { pid: $('pid').value.trim() || 'P00', n: clamp(+$('n').value, 5, 200), limit: clamp(+$('limit').value, 1, 120),
-    pmax: clamp(+$('pmax').value, 0, 100) / 100, k: clamp(+$('k').value, 0, 50), dur: clamp(+$('dur').value, 2, 120), debug: $('debug').checked };
+    pmax: clamp(+$('pmax').value, 0, 100) / 100, k: clamp(+$('k').value, 0, 50), dur: clamp(+$('dur').value, 2, 120), fast: clamp(+$('fast').value, 1, 30), debug: $('debug').checked };
 }
 
 function renderPlan(){
@@ -187,23 +209,28 @@ function buildItems(c){
 
 /* ---- プレーヤー（試作用 / 動画ファイル / YouTube） ---- */
 class DemoPlayer {
-  constructor(item, host, dur, onEnded){
-    this.dur = dur * 1000; this.t = 0; this.onEnded = onEnded;
+  constructor(item, host, dur, onEnded, h){
+    this.dur = dur * 1000; this.t = 0; this.onEnded = onEnded; this.h = h; h.dur(dur);
     const hue = item.kind === 'related' ? 28 + (item.index * 7) % 18 : 190 + (item.index * 37) % 120;
     host.innerHTML = '<div class="demo" style="background:linear-gradient(160deg,hsl(' + hue + ' 55% 34%),hsl(' + (hue + 25) + ' 60% 16%))">' +
       '<div class="s">' + TASK + '</div><div class="t"></div><div class="s">試作用の動画（' + dur + '秒でくり返し）</div><div class="bar"><i></i></div></div>';
     host.querySelector('.t').textContent = item.title;
     this.bar = host.querySelector('.bar i');
   }
-  play(){ this.t = 0; this.last = performance.now(); const tick = now => { this.t += now - this.last; this.last = now;
+  play(){ this.t = 0; this.last = performance.now(); this.h.play(); const tick = now => { this.t += now - this.last; this.last = now;
       if (this.t >= this.dur){ this.t = 0; this.onEnded(); } this.bar.style.transform = 'scaleX(' + (this.t / this.dur) + ')'; this.raf = requestAnimationFrame(tick); };
     this.raf = requestAnimationFrame(tick); }
-  pause(){ cancelAnimationFrame(this.raf); }
+  pause(){ cancelAnimationFrame(this.raf); this.h.stop(); }
 }
 class FilePlayer {
-  constructor(item, host, dur, onEnded){
+  constructor(item, host, dur, onEnded, h){
     this.v = document.createElement('video'); this.v.src = item.src; this.v.playsInline = true; this.v.preload = 'auto';
-    this.v.addEventListener('ended', () => { onEnded(); this.play(); }); host.appendChild(this.v);
+    this.v.addEventListener('ended', () => { onEnded(); this.play(); });
+    this.v.addEventListener('playing', () => h.play());
+    this.v.addEventListener('pause', () => h.stop());
+    this.v.addEventListener('waiting', () => h.stop());
+    this.v.addEventListener('loadedmetadata', () => h.dur(this.v.duration));
+    host.appendChild(this.v);
   }
   play(){ this.v.currentTime = 0; const p = this.v.play(); if (p && p.catch) p.catch(() => {}); }
   pause(){ this.v.pause(); }
@@ -215,43 +242,206 @@ function loadYT(){
     const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; window.onYouTubeIframeAPIReady = () => res(); document.head.appendChild(s); });
   return ytLoading;
 }
-class YTPlayer {
-  constructor(item, host, dur, onEnded){ this.item = item; this.host = host; this.onEnded = onEnded; this.want = false; this.p = null; this.ready = null; }
+// YouTubeのプレーヤーは1つだけ作り、動画を差し替えて再生する（最初の1回のタップだけで、以後は自動で再生されやすくなる）
+const YTS = {
+  p: null, ready: null, layer: null, tap: null, owner: null, playing: false, want: false, timer: null,
+  aligned(){ const f = $('feed'); return !S || S.active < 0 || Math.abs(f.scrollTop - S.active * f.clientHeight) < 3; },
   ensure(){
     if (this.ready) return this.ready;
-    this.ready = loadYT().then(() => new Promise(res => { const d = document.createElement('div'); this.host.appendChild(d);
-      this.tap = document.createElement('button'); this.tap.type = 'button'; this.tap.hidden = true; this.tap.textContent = 'タップして再生';
-      this.tap.style.cssText = 'position:absolute;inset:0;width:100%;background:rgba(0,0,0,.55);color:#fff;border:0;font:inherit;font-size:1.1rem;z-index:2';
-      this.tap.addEventListener('click', () => { this.tap.hidden = true; this.p.seekTo(0); this.p.playVideo(); });
-      this.host.appendChild(this.tap);
-      this.p = new window.YT.Player(d, { videoId: this.item.id, playerVars: { playsinline: 1, controls: 0, rel: 0, modestbranding: 1, fs: 0, disablekb: 1, iv_load_policy: 3 },
-        events: { onReady: () => res(), onAutoplayBlocked: () => { if (this.want) this.tap.hidden = false; },
-          onStateChange: e => { if (e.data === 1) this.tap.hidden = true; if (e.data === 0){ this.onEnded(); this.p.seekTo(0); this.p.playVideo(); } } } }); }));
+    this.ready = loadYT().then(() => new Promise(res => {
+      const fs = $('feedScreen'), L = document.createElement('div'); L.className = 'ytlayer'; fs.insertBefore(L, fs.querySelector('.hud'));
+      const d = document.createElement('div'); L.appendChild(d);
+      const t = document.createElement('button'); t.type = 'button'; t.hidden = true; t.className = 'yttap'; t.textContent = 'タップして再生';
+      t.addEventListener('click', () => { t.hidden = true; this.p.playVideo(); });
+      L.appendChild(t); this.layer = L; this.tap = t;
+      this.p = new window.YT.Player(d, { playerVars: { playsinline: 1, controls: 0, rel: 0, modestbranding: 1, fs: 0, disablekb: 1, iv_load_policy: 3 },
+        events: { onReady: () => res(), onAutoplayBlocked: () => this.blocked(), onStateChange: e => this.state(e.data),
+          onError: e => { if (this.owner) log('video_error', { index: this.owner.item.index, video_id: this.owner.item.id, kind: this.owner.item.kind, note: 'youtube_error ' + e.data }); } } });
+    }));
     return this.ready;
+  },
+  blocked(){ if (this.want && this.layer){ this.layer.style.visibility = 'visible'; this.tap.hidden = false; } },
+  state(s){
+    const h = this.owner && this.owner.h;
+    if (s === 1){
+      this.playing = true; this.tap.hidden = true; clearTimeout(this.timer); if (this.aligned()) this.layer.style.visibility = 'visible';
+      if (h){ try { h.dur(this.p.getDuration()); } catch (e) {} h.play(); }
+    }
+    else if (s === 0){ if (h) h.stop(); if (this.want && this.owner){ this.owner.onEnded(); this.p.seekTo(0); this.p.playVideo(); } }
+    else { if (h) h.stop(); if (s !== 3) this.playing = false; }
+  },
+  play(owner){
+    this.owner = owner; this.want = true; this.playing = false;
+    if (this.layer){ this.layer.style.visibility = 'hidden'; this.tap.hidden = true; }
+    this.ensure().then(() => {
+      if (!this.want || this.owner !== owner) return;
+      this.p.loadVideoById(owner.item.id);
+      clearTimeout(this.timer); this.timer = setTimeout(() => { if (!this.playing) this.blocked(); }, 1500);
+    });
+  },
+  pause(owner){
+    if (this.owner !== owner) return;
+    this.want = false; clearTimeout(this.timer);
+    if (this.p && this.p.pauseVideo) this.p.pauseVideo();
+    if (this.layer){ this.layer.style.visibility = 'hidden'; this.tap.hidden = true; }
+  },
+  hideTemp(){ if (this.layer && this.want) this.layer.style.visibility = 'hidden'; },
+  showIfReady(){ if (this.layer && this.want && (this.playing || !this.tap.hidden)) this.layer.style.visibility = 'visible'; }
+};
+class YTPlayer {
+  constructor(item, host, dur, onEnded, h){ this.item = item; this.onEnded = onEnded; this.h = h; }
+  play(){ YTS.play(this); }
+  pause(){ YTS.pause(this); }
+}
+
+// TikTokの埋め込みプレーヤー（動画ごとにiframeを作る。再生・一時停止は postMessage で操作）
+const TT = [];
+window.addEventListener('message', e => {
+  const d = e.data;
+  if (!d || !d['x-tiktok-player']) return;
+  const p = TT.find(x => x.ifr && x.ifr.contentWindow === e.source);
+  if (p) p.onMsg(d);
+});
+class TTPlayer {
+  constructor(item, host, dur, onEnded, h){
+    this.h = h; this.item = item; this.host = host; this.onEnded = onEnded; this.ifr = null; this.ready = false; this.want = false; this.playing = false; TT.push(this);
+    this.tap = document.createElement('button'); this.tap.type = 'button'; this.tap.hidden = true; this.tap.className = 'yttap'; this.tap.textContent = 'タップして再生';
+    this.tap.addEventListener('click', () => {
+      this.tap.hidden = true; this.send('play');
+      // それでも再生されなければ、TikTok自身の再生ボタンを直接押せるようにする
+      clearTimeout(this.timer2);
+      this.timer2 = setTimeout(() => { if (!this.playing && this.want && this.ifr) this.ifr.style.pointerEvents = 'auto'; }, 1000);
+    });
+    host.appendChild(this.tap);
   }
-  play(){ this.want = true; this.ensure().then(() => { if (this.want){ this.p.seekTo(0); this.p.playVideo(); } }); }
-  pause(){ this.want = false; if (this.p && this.p.pauseVideo) this.p.pauseVideo(); }
+  build(){
+    if (this.ifr) return;
+    const f = document.createElement('iframe');
+    f.src = 'https://www.tiktok.com/player/v1/' + encodeURIComponent(this.item.id) + '?controls=0&description=0&music_info=0&rel=0&loop=0&autoplay=0';
+    f.allow = 'autoplay; fullscreen'; this.host.insertBefore(f, this.host.firstChild); this.ifr = f;
+  }
+  send(type, value){
+    if (!this.ifr || !this.ifr.contentWindow) return;
+    const m = { 'x-tiktok-player': true, type }; if (value !== undefined) m.value = value;
+    this.ifr.contentWindow.postMessage(m, '*');
+  }
+  onMsg(d){
+    if (d.type === 'onPlayerReady'){ this.ready = true; if (this.want) this.start(); }
+    else if (d.type === 'onStateChange'){
+      if (d.value === 1){ this.playing = true; this.tap.hidden = true; clearTimeout(this.timer); if (this.ifr) this.ifr.style.pointerEvents = 'none'; this.h.play(); }
+      else if (d.value === 0){ this.h.stop(); if (this.want){ this.onEnded(); this.send('seekTo', 0); this.send('play'); } }
+      else { this.h.stop(); if (d.value === 2 || d.value === -1) this.playing = false; }
+    } else if (d.type === 'onCurrentTime'){
+      const v = d.value, dur = v && typeof v === 'object' ? v.duration : d.duration;
+      if (dur) this.h.dur(+dur);
+    } else if (d.type === 'onPlayerError'){
+      const v = d.value, code = v && typeof v === 'object' ? v.errorCode : v;
+      log('video_error', { index: this.item.index, video_id: this.item.id, kind: this.item.kind, note: 'tiktok_error ' + code });
+      if (this.want) this.tap.hidden = false;
+    }
+  }
+  start(){ this.send('seekTo', 0); this.send('play'); }
+  play(){
+    this.want = true; this.playing = false; this.build();
+    if (this.ready) this.start();
+    // 準備完了の通知が来なくても、2.5秒たっても再生されなければタップ表示を出す
+    clearTimeout(this.timer); this.timer = setTimeout(() => { if (!this.playing && this.want) this.tap.hidden = false; }, 2500);
+  }
+  pause(){
+    this.want = false; clearTimeout(this.timer); clearTimeout(this.timer2); this.tap.hidden = true;
+    if (this.ifr) this.ifr.style.pointerEvents = 'none';
+    if (this.ready) this.send('pause');
+  }
 }
 
 /* ---- セッション ---- */
 let S = null;
+const num = (v, d) => (v == null || !Number.isFinite(+v)) ? '' : (+v).toFixed(d);
+const median = a => { if (!a.length) return null; const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+
 function log(event, extra){
   if (!S) return;
   S.events.push(Object.assign({ t_epoch_ms: Date.now(), t_rel_s: ((performance.now() - S.t0) / 1000).toFixed(3), event }, extra || {}));
 }
+
+// --- スクロール（1回のスワイプ＝動きはじめから止まるまで） ---
+function trackScroll(){
+  const now = performance.now(), f = $('feed');
+  if (!S.sg){ S.sgId++; S.sg = { id: S.sgId, t0: now, last: now, y0: f.scrollTop, y1: f.scrollTop }; log('scroll_start', { note: 'gesture=' + S.sgId }); }
+  S.sg.last = now; S.sg.y1 = f.scrollTop;
+}
+function finishScroll(){
+  const g = S.sg; if (!g) return; S.sg = null;
+  const sec = (g.last - g.t0) / 1000, px = Math.abs(g.y1 - g.y0);
+  log('scroll_end', { scroll_s: sec.toFixed(3), scroll_px: Math.round(px), note: 'gesture=' + g.id });
+  S.scrolls.push({ s: sec, px });
+  const v = S.visits[S.visits.length - 1];
+  if (v && v.scrollId === g.id){ v.scrollS = sec; v.scrollPx = px; }
+}
+function onFeedScroll(){
+  if (!S || S.ended) return;
+  trackScroll();
+  YTS.hideTemp(); clearTimeout(S.sc);
+  S.sc = setTimeout(() => { finishScroll(); if (YTS.aligned()) YTS.showIfReady(); }, 150);
+}
+
+// --- 画面に触れた記録（タップ／スワイプ） ---
+function bindTouch(){
+  const fs = $('feedScreen');
+  fs.addEventListener('pointerdown', e => {
+    if (!S || S.ended) return;
+    const t = e.target, c = sel => !!(t && t.closest && t.closest(sel));
+    S.tp = { t: performance.now(), x: e.clientX, y: e.clientY, moved: false, tapPlay: c('.yttap'), stop: c('.stop') };
+  }, { passive: true });
+  fs.addEventListener('pointermove', e => {
+    const p = S && S.tp; if (p && !p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 12) p.moved = true;
+  }, { passive: true });
+  const up = () => {
+    const p = S && S.tp; if (!p) return; S.tp = null;
+    if (p.stop || S.ended) return;
+    const kind = (p.moved || S.sg) ? 'swipe' : (p.tapPlay ? 'tap_play' : 'tap');
+    log('touch', { touch_s: ((performance.now() - p.t) / 1000).toFixed(3), note: kind });
+    S.touches.push({ t: (p.t - S.t0) / 1000, kind });
+  };
+  fs.addEventListener('pointerup', up); fs.addEventListener('pointercancel', up);
+}
+
+// --- 再生している時間（動画ごと） ---
+function curVisit(i){ const v = S && S.visits[S.visits.length - 1]; return (v && v.index === i && !v.left && !S.ended) ? v : null; }
+function playOn(i){
+  const v = curVisit(i); if (!v || v.playSince != null) return;
+  v.playSince = performance.now(); if (v.firstPlayAt == null) v.firstPlayAt = v.playSince;
+  log('play_start', { index: i, video_id: v.id, kind: v.kind, type: v.type });
+}
+function playOff(i, quiet){
+  const v = curVisit(i); if (!v || v.playSince == null) return;
+  v.playMs += performance.now() - v.playSince; v.playSince = null;
+  if (!quiet) log('play_stop', { index: i, video_id: v.id, kind: v.kind, type: v.type });
+}
+function setDur(i, d){ if (S && S.durs[i] == null && Number.isFinite(d) && d > 0) S.durs[i] = d; }
+
 function activate(i){
   if (!S || S.ended || i === S.active) return;
   const from = S.active;
-  if (from >= 0) leave(from);
+  if (from >= 0) leave(from, 'scroll');
   S.active = i; const it = S.items[i]; S.enteredAt = performance.now();
-  log('video_show', { index: i, video_id: it.id, kind: it.kind, type: it.type, from_index: from >= 0 ? from : '', note: from >= 0 ? (i > from ? 'down' : 'up') : 'first' });
+  const dir = from >= 0 ? (i > from ? 'down' : 'up') : 'first';
+  S.visits.push({ n: S.visits.length + 1, index: i, id: it.id, kind: it.kind, type: it.type, enter: S.enteredAt, dir, left: false,
+    playMs: 0, playSince: null, firstPlayAt: null, endedAtEnter: S.endedCount[i], scrollId: S.sg ? S.sg.id : null, scrollS: null, scrollPx: null });
+  log('video_show', { index: i, video_id: it.id, kind: it.kind, type: it.type, from_index: from >= 0 ? from : '', note: from >= 0 ? dir : 'first' });
   S.players[i].play();
   updateDbg();
 }
-function leave(i){
-  const it = S.items[i], dwell = (performance.now() - S.enteredAt) / 1000;
+function leave(i, why){
+  const it = S.items[i], v = S.visits[S.visits.length - 1], now = performance.now();
   S.players[i].pause();
-  log('video_leave', { index: i, video_id: it.id, kind: it.kind, type: it.type, dwell_s: dwell.toFixed(3), completed: S.endedCount[i] > 0 ? 1 : 0 });
+  playOff(i, true);
+  v.left = true; v.why = why; v.leave = now; v.dwell = (now - v.enter) / 1000; v.play = v.playMs / 1000;
+  v.loops = S.endedCount[i] - v.endedAtEnter; v.dur = S.durs[i];
+  v.delay = v.firstPlayAt != null ? (v.firstPlayAt - v.enter) / 1000 : null;
+  log('video_leave', { index: i, video_id: it.id, kind: it.kind, type: it.type, dwell_s: v.dwell.toFixed(3), play_s: v.play.toFixed(3),
+    duration_s: num(v.dur, 2), completed: v.loops > 0 ? 1 : 0, note: why });
 }
 function updateDbg(){
   if (!S || !S.cfg.debug) return;
@@ -263,60 +453,136 @@ function updateDbg(){
 function start(){
   const cfg = readCfg(), items = buildItems(cfg), feed = $('feed');
   feed.innerHTML = '';
-  S = { cfg, items, players: [], endedCount: items.map(() => 0), events: [], active: -1, ended: false, t0: performance.now(), startedAt: new Date() };
+  S = { cfg, items, players: [], endedCount: items.map(() => 0), durs: items.map(() => null), events: [], visits: [], scrolls: [], touches: [],
+    sg: null, sgId: 0, tp: null, active: -1, ended: false, t0: performance.now(), startedAt: new Date() };
   items.forEach((it, i) => {
     const slide = document.createElement('section'); slide.className = 'slide'; slide.dataset.i = i;
     feed.appendChild(slide);
     const onEnded = () => { S.endedCount[i]++; log('video_ended', { index: i, video_id: it.id, kind: it.kind, note: 'count=' + S.endedCount[i] }); };
-    const P = it.type === 'file' ? FilePlayer : it.type === 'youtube' ? YTPlayer : DemoPlayer;
-    S.players.push(new P(it, slide, cfg.dur, onEnded));
+    const hooks = { play: () => playOn(i), stop: () => playOff(i), dur: d => setDur(i, d) };
+    const P = it.type === 'file' ? FilePlayer : it.type === 'youtube' ? YTPlayer : it.type === 'tiktok' ? TTPlayer : DemoPlayer;
+    S.players.push(new P(it, slide, cfg.dur, onEnded, hooks));
   });
   S.io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting && e.intersectionRatio >= 0.6) activate(+e.target.dataset.i); }), { root: feed, threshold: [0.6] });
   feed.querySelectorAll('.slide').forEach(s => S.io.observe(s));
   $('setup').hidden = true; $('endScreen').hidden = true; $('feedScreen').hidden = false;
   $('dbg').hidden = !cfg.debug;
+  feed.onscroll = onFeedScroll;
   feed.scrollTop = 0;
-  log('session_start', { note: 'pid=' + cfg.pid + ' n=' + cfg.n + ' limit_min=' + cfg.limit + ' pmax=' + cfg.pmax + ' k=' + cfg.k + ' iso=' + S.startedAt.toISOString() });
+  log('session_start', { note: 'pid=' + cfg.pid + ' n=' + cfg.n + ' limit_min=' + cfg.limit + ' pmax=' + cfg.pmax + ' k=' + cfg.k + ' fast_s=' + cfg.fast + ' iso=' + S.startedAt.toISOString() });
   activate(0);
   S.timer = setInterval(() => { updateDbg(); if ((performance.now() - S.t0) / 1000 >= cfg.limit * 60) end('time_limit'); }, 250);
   try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(w => { S.wake = w; }).catch(() => {}); } catch (e) {}
   try { feed.focus(); } catch (e) {}
 }
-function toCsv(){
-  const cols = ['t_epoch_ms', 't_rel_s', 'event', 'index', 'video_id', 'kind', 'type', 'dwell_s', 'completed', 'from_index', 'note'];
-  const q = v => { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-  return [cols.join(',')].concat(S.events.map(e => cols.map(c => q(e[c])).join(','))).join('\n');
+
+/* ---- 集計 ---- */
+const q = v => { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+const table = (cols, rows) => [cols.join(',')].concat(rows.map(r => cols.map(c => q(r[c])).join(','))).join('\n');
+
+function eventsCsv(){
+  return table(['t_epoch_ms', 't_rel_s', 'event', 'index', 'video_id', 'kind', 'type', 'dwell_s', 'play_s', 'duration_s', 'completed', 'from_index', 'scroll_s', 'scroll_px', 'touch_s', 'note'], S.events);
+}
+function visitRows(){
+  const fast = S.cfg.fast;
+  return S.visits.map(v => ({
+    visit: v.n, index: v.index, video_id: v.id, kind: v.kind, type: v.type,
+    enter_t_s: num((v.enter - S.t0) / 1000, 3), leave_t_s: num((v.leave - S.t0) / 1000, 3),
+    dwell_s: num(v.dwell, 3), play_s: num(v.play, 3), duration_s: num(v.dur, 2),
+    play_ratio: v.dur ? num(v.play / v.dur, 3) : '', start_delay_s: num(v.delay, 3),
+    loops: v.loops, completed: v.loops > 0 ? 1 : 0, direction: v.dir, leave_reason: v.why,
+    scroll_before_s: num(v.scrollS, 3), scroll_before_px: v.scrollPx == null ? '' : Math.round(v.scrollPx),
+    fast_skip: v.why === 'scroll' ? (v.dwell < fast ? 1 : 0) : ''
+  }));
+}
+function metrics(){
+  const vs = S.visits, T = (S.tEnd - S.t0) / 1000, fast = S.cfg.fast;
+  const done = vs.filter(v => v.why === 'scroll');
+  const half = x => (x.enter - S.t0) / 1000 < T / 2;
+  const dw = a => a.map(v => v.dwell);
+  let streak = 0, maxStreak = 0;
+  done.forEach(v => { if (v.dwell < fast){ streak++; maxStreak = Math.max(maxStreak, streak); } else streak = 0; });
+  const sc = S.scrolls.filter(g => g.px >= 10);
+  const pts = [0].concat(S.touches.map(t => t.t), [T]); let gap = 0;
+  for (let i = 1; i < pts.length; i++) gap = Math.max(gap, pts[i] - pts[i - 1]);
+  const dwellAll = vs.reduce((a, v) => a + v.dwell, 0), playAll = vs.reduce((a, v) => a + v.play, 0);
+  const ratios = done.filter(v => v.dur).map(v => v.play / v.dur);
+  return {
+    pid: S.cfg.pid, session_s: T, n_visits: vs.length, n_videos: new Set(vs.map(v => v.index)).size, n_back: vs.filter(v => v.dir === 'up').length,
+    n_related: vs.filter(v => v.kind === 'related').length, n_unrelated: vs.filter(v => v.kind === 'unrelated').length,
+    dwell_median_s: median(dw(done)), dwell_mean_s: mean(dw(done)),
+    dwell_median_first_half_s: median(dw(done.filter(half))), dwell_median_second_half_s: median(dw(done.filter(v => !half(v)))),
+    dwell_median_related_s: median(dw(done.filter(v => v.kind === 'related'))), dwell_median_unrelated_s: median(dw(done.filter(v => v.kind === 'unrelated'))),
+    play_total_s: playAll, dwell_total_s: dwellAll, play_share: dwellAll ? playAll / dwellAll : null, play_ratio_median: median(ratios),
+    fast_threshold_s: fast, fast_skip_n: done.filter(v => v.dwell < fast).length, fast_skip_rate: done.length ? done.filter(v => v.dwell < fast).length / done.length : null, fast_skip_max_streak: maxStreak,
+    complete_rate: done.length ? done.filter(v => v.loops > 0).length / done.length : null, loops_total: vs.reduce((a, v) => a + v.loops, 0),
+    scroll_n: sc.length, scroll_total_s: sc.reduce((a, g) => a + g.s, 0), scroll_median_s: median(sc.map(g => g.s)), scroll_median_px: median(sc.map(g => g.px)),
+    touch_n: S.touches.length, tap_n: S.touches.filter(t => t.kind === 'tap').length, longest_no_touch_s: gap
+  };
+}
+const SUMMARY_LABELS = [
+  ['session_s', '視聴した時間（秒）', 1], ['n_visits', '表示した回数（戻った分を含む）', 0], ['n_videos', '見た動画の本数', 0], ['n_back', '上に戻った回数', 0],
+  ['dwell_median_s', '1本あたりの滞在時間・中央値（秒）', 1], ['dwell_median_first_half_s', '　前半の中央値（秒）', 1], ['dwell_median_second_half_s', '　後半の中央値（秒）', 1],
+  ['dwell_median_related_s', '　関係ある動画の中央値（秒）', 1], ['dwell_median_unrelated_s', '　関係ない動画の中央値（秒）', 1],
+  ['play_share', '滞在のうち実際に再生していた割合', 2], ['play_ratio_median', '動画の長さに対する再生時間の割合・中央値', 2],
+  ['fast_skip_rate', 'すぐスキップした割合', 2], ['fast_skip_max_streak', 'すぐスキップが続いた最大の回数', 0], ['complete_rate', '最後まで見た割合', 2],
+  ['scroll_n', 'スクロールの回数', 0], ['scroll_total_s', 'スクロールしていた時間の合計（秒）', 1], ['scroll_median_s', '1回のスクロール時間・中央値（秒）', 2],
+  ['touch_n', '画面に触れた回数', 0], ['tap_n', '　うち、タップ（スワイプ以外）', 0], ['longest_no_touch_s', '触れていない最長の時間（秒）', 1]
+];
+function buildOutputs(){
+  const m = metrics(), cols = Object.keys(m);
+  const row = {}; cols.forEach(c => { row[c] = typeof m[c] === 'number' ? (Number.isInteger(m[c]) ? m[c] : +m[c].toFixed(4)) : (m[c] == null ? '' : m[c]); });
+  S.out = { events: eventsCsv(), visits: table(Object.keys(visitRows()[0] || { visit: 1 }), visitRows()), summary: table(cols, [row]) };
+  $('sumView').innerHTML = SUMMARY_LABELS.map(([k, label, d]) => '<span>' + label + '</span><span>' + (m[k] == null ? '–' : (+m[k]).toFixed(d)) + '</span>').join('');
+}
+const KIND_NOTE = {
+  events: '時刻順のすべての記録。スクロールの開始・終了、再生の開始・停止、画面に触れた記録も入っています。',
+  visits: '動画を画面に出した1回ごとの1行。滞在時間、実際の再生時間、動画の長さ、直前のスクロール時間などです。',
+  summary: '参加者1人につき1行。分析で人を並べるときに使います。'
+};
+function showKind(k){
+  S.kind = k; $('csv').value = S.out[k]; $('kindNote').textContent = KIND_NOTE[k]; $('msg').textContent = '';
+  document.querySelectorAll('[data-k]').forEach(b => { const on = b.dataset.k === k; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
 }
 function end(reason){
   if (!S || S.ended) return;
-  if (S.active >= 0) leave(S.active);
-  S.ended = true; clearInterval(S.timer); S.io.disconnect();
+  finishScroll();
+  if (S.active >= 0) leave(S.active, 'end');
+  S.ended = true; S.tEnd = performance.now(); clearInterval(S.timer); S.io.disconnect();
   S.players.forEach(p => p.pause());
   log('session_end', { note: reason });
   try { if (S.wake) S.wake.release(); } catch (e) {}
-  const shown = new Set(S.events.filter(e => e.event === 'video_show').map(e => e.index)), done = S.endedCount.filter(n => n > 0).length;
+  const shown = new Set(S.events.filter(e => e.event === 'video_show').map(e => e.index));
   const un = S.items.filter(x => shown.has(x.index) && x.kind === 'unrelated').length;
-  $('endStat').textContent = '参加者 ' + S.cfg.pid + '　見た動画 ' + shown.size + '本（関係ない動画 ' + un + '本）　最後まで再生 ' + done + '本';
-  $('csv').value = toCsv(); $('msg').textContent = '';
+  $('endStat').textContent = '参加者 ' + S.cfg.pid + '　見た動画 ' + shown.size + '本（関係ない動画 ' + un + '本）　終了の理由：' + (reason === 'time_limit' ? '時間切れ' : '終了ボタン');
+  buildOutputs(); showKind('events');
   $('feedScreen').hidden = true; $('endScreen').hidden = false;
 }
 
 $('start').addEventListener('click', start);
 $('stop').addEventListener('click', () => end('manual'));
 $('again').addEventListener('click', () => { $('endScreen').hidden = true; $('setup').hidden = false; });
+document.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => { if (S && S.out) showKind(b.dataset.k); }));
 $('copy').addEventListener('click', () => {
   const ta = $('csv');
   const fallback = () => { ta.focus(); ta.select(); $('msg').textContent = '選択しました。コピーしてください。'; };
   try { navigator.clipboard.writeText(ta.value).then(() => { $('msg').textContent = 'コピーしました。'; }, fallback); } catch (e) { fallback(); }
 });
+function saveCsv(kind){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + S.out[kind]], { type: 'text/csv' }));
+  a.download = 'viewing_' + kind + '_' + S.cfg.pid + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
 $('dl').addEventListener('click', () => {
-  try {
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + $('csv').value], { type: 'text/csv' }));
-    a.download = 'viewing_log_' + (S ? S.cfg.pid : 'P00') + '.csv'; document.body.appendChild(a); a.click(); a.remove();
-    $('msg').textContent = '保存を試しました。保存されないときは、コピーして使ってください。';
-  } catch (e) { $('msg').textContent = 'この画面では保存できません。コピーして使ってください。'; }
+  try { saveCsv(S.kind); $('msg').textContent = '保存を試しました。保存されないときは、コピーして使ってください。'; }
+  catch (e) { $('msg').textContent = 'この画面では保存できません。コピーして使ってください。'; }
 });
-['pid','n','limit','pmax','k','dur'].forEach(id => $(id).addEventListener('input', renderPlan));
+$('dlAll').addEventListener('click', () => {
+  try { ['events', 'visits', 'summary'].forEach((k, i) => setTimeout(() => saveCsv(k), i * 400)); $('msg').textContent = '3つの保存を試しました。保存されないときは、1つずつコピーして使ってください。'; }
+  catch (e) { $('msg').textContent = 'この画面では保存できません。コピーして使ってください。'; }
+});
+document.addEventListener('visibilitychange', () => { if (S && !S.ended) log(document.hidden ? 'page_hidden' : 'page_visible'); });
+bindTouch();
+['pid','n','limit','pmax','k','dur','fast'].forEach(id => $(id).addEventListener('input', renderPlan));
 if (location.protocol === 'file:' && [].concat(REAL.related, REAL.unrelated).some(x => x.type === 'youtube')) $('fileWarn').hidden = false;
 renderPlan();
 window.__feedTest = { get S(){ return S; }, end, activate };
