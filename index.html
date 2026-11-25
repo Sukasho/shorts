@@ -48,6 +48,7 @@ pre{font-family:var(--mono);white-space:pre-wrap;overflow-x:auto;background:var(
 .slide{position:relative;height:100%;width:100%;scroll-snap-align:start;scroll-snap-stop:always;overflow:hidden;background:#000}
 .ytlayer{position:absolute;inset:0;background:#000;visibility:hidden;pointer-events:none;z-index:3}
 .ytlayer iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.ttchip{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:3;background:rgba(0,0,0,.65);color:#fff;border:1px solid rgba(255,255,255,.6);border-radius:999px;padding:10px 18px;font:inherit;font-size:.95rem}
 .yttap{position:absolute;inset:0;width:100%;background:rgba(0,0,0,.55);color:#fff;border:0;font:inherit;font-size:1.1rem;pointer-events:auto;z-index:2}
 .slide iframe,.slide video{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:cover;pointer-events:none}
 .demo{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center}
@@ -446,6 +447,10 @@ class TTPlayer {
       this.timer2 = setTimeout(() => { if (!this.playing && this.want && this.ifr) this.ifr.style.pointerEvents = 'auto'; }, 1000);
     });
     host.appendChild(this.tap);
+    // 自動再生が止められて、音を消して再生したときだけ出す、小さなボタン
+    this.chip = document.createElement('button'); this.chip.type = 'button'; this.chip.hidden = true; this.chip.className = 'ttchip'; this.chip.textContent = 'タップして音を出す';
+    this.chip.addEventListener('click', () => { this.send('unMute'); this.chip.hidden = true; S.sound = true; log('unmute_tap', { index: this.item.index, video_id: this.item.id, kind: this.item.kind }); });
+    host.appendChild(this.chip);
   }
   showMissing(){
     if (this.msg) return;
@@ -457,8 +462,8 @@ class TTPlayer {
   build(){
     if (this.ifr) return;
     const f = document.createElement('iframe');
-    f.src = 'https://www.tiktok.com/player/v1/' + encodeURIComponent(this.item.id) + '?controls=0&description=0&music_info=0&rel=0&loop=0&autoplay=0';
-    f.allow = 'autoplay; fullscreen'; this.host.insertBefore(f, this.host.firstChild); this.ifr = f;
+    f.src = 'https://www.tiktok.com/player/v1/' + encodeURIComponent(this.item.id) + '?controls=0&description=0&music_info=0&rel=0&loop=0&autoplay=1';
+    f.allow = 'autoplay; fullscreen; encrypted-media'; this.host.insertBefore(f, this.host.firstChild); this.ifr = f;
   }
   send(type, value){
     if (!this.ifr || !this.ifr.contentWindow) return;
@@ -468,7 +473,9 @@ class TTPlayer {
   onMsg(d){
     if (d.type === 'onPlayerReady'){ this.ready = true; if (this.want) this.start(); }
     else if (d.type === 'onStateChange'){
-      if (d.value === 1){ this.playing = true; this.tap.hidden = true; clearTimeout(this.timer); if (this.ifr) this.ifr.style.pointerEvents = 'none'; this.h.play(); }
+      if (d.value === 1){ this.playing = true; this.tap.hidden = true; clearTimeout(this.timer); clearTimeout(this.timer3);
+        if (this.muted && !S.sound) this.chip.hidden = false;
+        else if (S.sound) this.send('unMute'); if (this.ifr) this.ifr.style.pointerEvents = 'none'; this.h.play(); }
       else if (d.value === 0){ this.h.stop(); if (this.want){ this.onEnded(); this.send('seekTo', 0); this.send('play'); } }
       else { this.h.stop(); if (d.value === 2 || d.value === -1) this.playing = false; }
     } else if (d.type === 'onCurrentTime'){
@@ -487,13 +494,17 @@ class TTPlayer {
       log('video_error', { index: this.item.index, video_id: this.item.id, kind: this.item.kind, note: 'tiktok_id_missing' });
       return;
     }
-    this.want = true; this.playing = false; this.build();
+    this.want = true; this.playing = false; this.muted = false; this.build();
     if (this.ready) this.start();
-    // 準備完了の通知が来なくても、2.5秒たっても再生されなければタップ表示を出す
-    clearTimeout(this.timer); this.timer = setTimeout(() => { if (!this.playing && this.want) this.tap.hidden = false; }, 2500);
+    // 1.5秒たっても再生されなければ、音を消して再生を試す。3.5秒でもだめなら、タップ表示を出す
+    clearTimeout(this.timer); clearTimeout(this.timer3);
+    this.timer = setTimeout(() => {
+      if (!this.playing && this.want){ this.muted = true; this.send('mute'); this.send('play'); log('autoplay_blocked', { index: this.item.index, video_id: this.item.id, kind: this.item.kind, note: 'try_muted' }); }
+    }, 1500);
+    this.timer3 = setTimeout(() => { if (!this.playing && this.want) this.tap.hidden = false; }, 3500);
   }
   pause(){
-    this.want = false; clearTimeout(this.timer); clearTimeout(this.timer2); this.tap.hidden = true;
+    this.want = false; clearTimeout(this.timer); clearTimeout(this.timer2); clearTimeout(this.timer3); this.tap.hidden = true; this.chip.hidden = true;
     if (this.ifr) this.ifr.style.pointerEvents = 'none';
     if (this.ready) this.send('pause');
   }
