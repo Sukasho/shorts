@@ -48,6 +48,7 @@ pre{font-family:var(--mono);white-space:pre-wrap;overflow-x:auto;background:var(
 .slide{position:relative;height:100%;width:100%;scroll-snap-align:start;scroll-snap-stop:always;overflow:hidden;background:#000}
 .ytlayer{position:absolute;inset:0;background:#000;visibility:hidden;pointer-events:none;z-index:3}
 .ytlayer iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.ttcover{position:absolute;inset:0;background:#000;z-index:1;pointer-events:none}
 .ttchip{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:3;background:rgba(0,0,0,.65);color:#fff;border:1px solid rgba(255,255,255,.6);border-radius:999px;padding:10px 18px;font:inherit;font-size:.95rem}
 .yttap{position:absolute;inset:0;width:100%;background:rgba(0,0,0,.55);color:#fff;border:0;font:inherit;font-size:1.1rem;pointer-events:auto;z-index:2}
 .slide iframe,.slide video{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:cover;pointer-events:none}
@@ -440,6 +441,8 @@ class TTPlayer {
       clearTimeout(this.timer2);
       this.timer2 = setTimeout(() => { if (!this.playing && this.want && this.ifr) this.ifr.style.pointerEvents = 'auto'; }, 1000);
     });
+    // 読み込み中や再生前に、TikTokの白い画面が見えないように、黒いカバーをかけておく（再生が始まったら外す）
+    this.cover = document.createElement('div'); this.cover.className = 'ttcover'; host.appendChild(this.cover);
     host.appendChild(this.tap);
     // 自動再生が止められて、音を消して再生したときだけ出す、小さなボタン
     this.chip = document.createElement('button'); this.chip.type = 'button'; this.chip.hidden = true; this.chip.className = 'ttchip'; this.chip.textContent = 'タップして音を出す';
@@ -467,7 +470,7 @@ class TTPlayer {
   onMsg(d){
     if (d.type === 'onPlayerReady'){ this.ready = true; if (this.want) this.start(); }
     else if (d.type === 'onStateChange'){
-      if (d.value === 1){ this.playing = true; this.tap.hidden = true; clearTimeout(this.timer); clearTimeout(this.timer3);
+      if (d.value === 1){ this.playing = true; this.tap.hidden = true; this.cover.hidden = true; clearTimeout(this.timer); clearTimeout(this.timer3);
         if (this.muted && !S.sound) this.chip.hidden = false;
         else if (S.sound) this.send('unMute'); if (this.ifr) this.ifr.style.pointerEvents = 'none'; this.h.play(); }
       else if (d.value === 0){ this.h.stop(); if (this.want){ this.onEnded(); this.send('seekTo', 0); this.send('play'); } }
@@ -485,14 +488,14 @@ class TTPlayer {
   // 次に見る動画を、先に読み込んでおく（再生はしない）。スクロールしたあとの待ち時間を減らすため
   preload(){ if (!this.item.missing) this.build(false); }
   // 通りすぎた動画のプレーヤーは、メモリを空けるため、しばらくしたら外す（戻ったときは作り直す）
-  release(){ if (!this.ifr) return; this.pause(); this.ifr.remove(); this.ifr = null; this.ready = false; }
+  release(){ if (!this.ifr) return; this.pause(); this.ifr.remove(); this.ifr = null; this.ready = false; this.cover.hidden = false; }
   play(){
     if (this.item.missing){
       this.showMissing();
       log('video_error', { index: this.item.index, video_id: this.item.id, kind: this.item.kind, note: 'tiktok_id_missing' });
       return;
     }
-    this.want = true; this.playing = false; this.muted = false; this.build(true);
+    this.want = true; this.playing = false; this.muted = false; this.cover.hidden = false; this.build(true);
     if (this.ready) this.start();
     // 1.5秒たっても再生されなければ、音を消して再生を試す。3.5秒でもだめなら、タップ表示を出す
     clearTimeout(this.timer); clearTimeout(this.timer3);
@@ -586,7 +589,8 @@ function activate(i){
   log('video_show', { index: i, video_id: it.id, kind: it.kind, type: it.type, from_index: from >= 0 ? from : '', note: from >= 0 ? dir : 'first' });
   S.players[i].play();
   ensureAhead(i);
-  const old = S.players[i - 3]; if (old && old.release) old.release();
+  const nx = S.players[i + 1]; if (nx && nx.preload) nx.preload();
+  const old = S.players[i - 2]; if (old && old.release) old.release();
   if (TEST_LOCK_S > 0 && it.test){
     const f = $('feed'); f.style.overflowY = 'hidden'; clearTimeout(S.lk);
     log('lock_start', { index: i, video_id: it.id, kind: it.kind, note: 'lock_s=' + TEST_LOCK_S });
@@ -620,7 +624,6 @@ function addSlide(){
   const hooks = { play: () => playOn(i), stop: () => playOff(i), dur: d => setDur(i, d) };
   const P = it.type === 'file' ? FilePlayer : it.type === 'youtube' ? YTPlayer : it.type === 'tiktok' ? TTPlayer : DemoPlayer;
   const pl = new P(it, slide, S.cfg.dur, onEnded, hooks); S.players.push(pl);
-  if (pl.preload) pl.preload();
   S.io.observe(slide);
 }
 // 出し始める時刻（既定15分）になったとき、まだ見ていない先読み分を作り直して、次にスワイプしたとき必ず関係ない動画が出るようにする
