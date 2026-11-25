@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>スクロール視聴実験</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: 設定画面（実験者用）→ 全画面の縦スクロール視聴 → 終了画面（ログ書き出し）。暗い画面で動画に集中させる */
+:root{
+  --bg:#0e1013; --surface:#171a1f; --fg:#eceae4; --muted:#9a9a96; --line:#2a2e35;
+  --rel:#e8a33d; --unrel:#5fa8d3; --on-accent:#1a1307;
+  --font:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic","Noto Sans JP",system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
+*{box-sizing:border-box}
+h1{font-size:1.5rem;line-height:1.3;margin:0;text-wrap:balance}
+.wrap{max-width:560px;margin:0 auto;padding-block:24px 40px;display:flex;flex-direction:column;gap:20px}
+.lead{color:var(--muted);margin:4px 0 0;font-size:.9rem}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted);min-width:0}
+input[type=text],input[type=number]{background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;
+  padding:10px 12px;font:inherit;font-size:1rem;width:100%;min-width:0}
+input:focus-visible,button:focus-visible,summary:focus-visible,textarea:focus-visible{outline:2px solid var(--rel);outline-offset:2px}
+.check{flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:.9rem}
+.plan{display:flex;flex-direction:column;gap:8px}
+.plan h2,.sec h2{font-size:.8rem;font-weight:500;color:var(--muted);margin:0;letter-spacing:.06em}
+.strip{display:flex;gap:2px;height:28px}
+.strip i{flex:1 1 0;min-width:0;border-radius:2px;background:var(--rel)}
+.strip i.u{background:var(--unrel)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.8rem;color:var(--muted)}
+.legend b{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.stat{font-variant-numeric:tabular-nums;font-size:.9rem}
+button{font:inherit;cursor:pointer}
+.btn{background:var(--rel);color:var(--on-accent);border:0;border-radius:8px;padding:14px 20px;font-weight:700;font-size:1.05rem}
+.btn.sub{background:var(--surface);color:var(--fg);border:1px solid var(--line);font-weight:500;font-size:.95rem;padding:10px 14px}
+details{border:1px solid var(--line);border-radius:8px;padding:10px 14px;background:var(--surface)}
+summary{cursor:pointer;font-size:.9rem}
+details p,details pre{font-size:.85rem;color:var(--muted);margin:10px 0 0}
+pre{font-family:var(--mono);white-space:pre-wrap;overflow-x:auto;background:var(--bg);padding:10px;border-radius:6px;color:var(--fg)}
+
+/* 全画面フィード */
+.screen{position:fixed;inset:0;background:var(--bg);z-index:5}
+.feed{position:absolute;inset:0;overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.feed::-webkit-scrollbar{display:none}
+.slide{position:relative;height:100%;width:100%;scroll-snap-align:start;scroll-snap-stop:always;overflow:hidden;background:#000}
+.ytlayer{position:absolute;inset:0;background:#000;visibility:hidden;pointer-events:none;z-index:3}
+.ytlayer iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.ttchip{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:3;background:rgba(0,0,0,.65);color:#fff;border:1px solid rgba(255,255,255,.6);border-radius:999px;padding:10px 18px;font:inherit;font-size:.95rem}
+.yttap{position:absolute;inset:0;width:100%;background:rgba(0,0,0,.55);color:#fff;border:0;font:inherit;font-size:1.1rem;pointer-events:auto;z-index:2}
+.slide iframe,.slide video{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:cover;pointer-events:none}
+.demo{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center}
+.demo .t{font-size:clamp(1.6rem,7vw,2.4rem);font-weight:700;line-height:1.25;text-wrap:balance;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.35)}
+.demo .s{font-size:.85rem;color:rgba(255,255,255,.75)}
+.demo .bar{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,255,255,.2)}
+.demo .bar i{display:block;height:100%;background:#fff;transform-origin:left;transform:scaleX(0)}
+.hud{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none;
+  padding:calc(8px + env(safe-area-inset-top,0px)) max(8px,env(safe-area-inset-left,0px)) 0 max(8px,env(safe-area-inset-left,0px));z-index:6}
+.dbg{font-family:var(--mono);font-size:.7rem;line-height:1.4;background:rgba(0,0,0,.6);color:#fff;border-radius:6px;padding:6px 8px;font-variant-numeric:tabular-nums;white-space:pre}
+.stop{pointer-events:auto;background:rgba(0,0,0,.35);color:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.25);border-radius:6px;
+  min-width:44px;min-height:44px;font-size:.75rem;margin-left:auto}
+.end{overflow-y:auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.end .wrap{padding-top:calc(24px + env(safe-area-inset-top,0px));padding-bottom:calc(40px + env(safe-area-inset-bottom,0px))}
+textarea{width:100%;min-height:180px;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:10px;font-family:var(--mono);font-size:.72rem;resize:vertical}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.btn.sub.on{border-color:var(--rel);color:var(--rel)}
+.sumv{display:grid;grid-template-columns:1fr auto;gap:4px 14px;font-size:.85rem;font-variant-numeric:tabular-nums;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.sumv span:nth-child(odd){color:var(--muted)}
+.sumv span:nth-child(even){text-align:right}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+</head><body>
+<main id="setup" class="wrap">
+  <header>
+    <h1>スクロール視聴実験</h1>
+    <p class="lead" style="margin:0">お題：TOEICの勉強法</p>
+    <p class="lead">縦にスクロールして次の動画を見る画面です。後ろにいくほど、お題と関係のない動画の割合が増えます。</p>
+  </header>
+  <p id="ttWarn" class="lead" style="color:var(--rel)" hidden></p>
+  <p id="fileWarn" class="lead" style="color:var(--rel)" hidden>このファイルを直接開いているため、YouTubeやTikTokの動画は再生されません（YouTubeはエラー153）。Webに置くか、パソコンで簡単なサーバーを起動して、http:// のアドレスで開いてください。</p>
+
+  <section class="grid" aria-label="設定">
+    <label for="pid">参加者ID<input id="pid" type="text" value="P01" autocomplete="off"></label>
+    <label for="limit">視聴時間（分）<input id="limit" type="number" value="30" min="1" max="120" inputmode="numeric"></label>
+    <label for="pmax">最後の割合（関係ない%）<input id="pmax" type="number" value="90" min="0" max="100" inputmode="numeric"></label>
+    <label for="kt">関係ない動画を出し始める（分）<input id="kt" type="number" value="15" min="0" max="120" inputmode="numeric"></label>
+    <label for="dur">試作動画の長さ（秒）<input id="dur" type="number" value="8" min="2" max="120" inputmode="numeric"></label>
+    <label for="fast">すぐスキップの基準（秒）<input id="fast" type="number" value="3" min="1" max="30" inputmode="numeric"></label>
+  </section>
+  <label class="check" for="debug"><input id="debug" type="checkbox" checked>実験者用の表示を出す</label>
+
+  <section class="plan" aria-label="動画の並び">
+    <h2>関係ない動画が出る割合（1マスが1分）</h2>
+    <div id="strip" class="strip" role="img" aria-label="動画の並び"></div>
+    <div class="legend"><span><b style="background:var(--rel)"></b>お題に関係ある</span><span><b style="background:var(--unrel)"></b>関係ない</span></div>
+    <div id="stat" class="stat"></div>
+    <div id="cat" class="stat" style="color:var(--muted);font-size:.8rem"></div>
+  </section>
+
+  <button id="start" class="btn" type="button">視聴を始める</button>
+
+  <details>
+    <summary>本物の動画に差し替えるには</summary>
+    <p>ファイル先頭付近の <code>REAL</code> に、動画のIDを並べます。今は、関係ある50本が入っています。関係ない動画は、これから入れます。TikTokは、URLの /video/ のあとの数字がIDです。このファイルは、Webに置いたときだけ動画が再生されます。</p>
+    <pre>const REAL = {
+  related:   [{type:'youtube', id:'動画ID'},
+              {type:'tiktok', id:'投稿ID（数字）'},
+              {type:'tiktok', url:'https://www.tiktok.com/@名前/video/数字'},
+              {type:'youtube', id:'動画ID', test:true},
+              {type:'file', src:'videos/r01.mp4'}],
+  unrelated: [{type:'youtube', id:'動画ID'}]
+};</pre>
+  </details>
+</main>
+
+<div id="feedScreen" class="screen" hidden>
+  <div id="feed" class="feed" tabindex="-1"></div>
+  <div class="hud"><div id="dbg" class="dbg" hidden></div><button id="stop" class="stop" type="button" aria-label="実験を終了する">終了</button></div>
+</div>
+
+<div id="endScreen" class="screen end" hidden>
+  <div class="wrap">
+    <h1>視聴を終了しました</h1>
+    <div id="endStat" class="stat"></div>
+    <section class="sec" style="display:flex;flex-direction:column;gap:8px">
+      <h2>この視聴の要約</h2>
+      <div id="sumView" class="sumv"></div>
+      <p class="lead" style="margin:0;font-size:.8rem">最後の1本（時間切れや終了ボタンで途中になった動画）は、すぐスキップの割合・最後まで見た割合・滞在時間の中央値には入れていません。</p>
+    </section>
+    <section class="sec" style="display:flex;flex-direction:column;gap:8px">
+      <h2>記録（CSV）</h2>
+      <div class="row" role="group" aria-label="記録の種類">
+        <button class="btn sub on" type="button" data-k="events" aria-pressed="true">イベント</button>
+        <button class="btn sub" type="button" data-k="visits" aria-pressed="false">1本ごと</button>
+        <button class="btn sub" type="button" data-k="summary" aria-pressed="false">要約</button>
+      </div>
+      <div id="kindNote" class="stat" style="color:var(--muted);font-size:.8rem"></div>
+      <textarea id="csv" readonly aria-label="記録のCSV"></textarea>
+      <div class="row">
+        <button id="copy" class="btn sub" type="button">コピーする</button>
+        <button id="dl" class="btn sub" type="button">この表を保存</button>
+        <button id="dlAll" class="btn sub" type="button">3つとも保存</button>
+      </div>
+      <div id="msg" class="stat" aria-live="polite"></div>
+    </section>
+    <button id="again" class="btn sub" type="button">設定にもどる</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const REAL = {
+  // TOEICの勉強法（フィード条件）の関係ある動画50本。
+  // test: true は、再生テストに使う動画です（Q番号は問題メモの番号。Q6は外しました）。
+  related: [
+    { type: 'tiktok', url: 'https://www.tiktok.com/@umeka0320/video/7515001742120045831' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@mocha.asakatsu/video/7519872282219629845' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@english_hanah/video/7456408068838968594' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@kietson23/video/7576919230881205522' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@yuha_english05/video/7603007940588588296', test: true },  // Q1 Part5は1問何秒で解けるようにならないといけないのか？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@toeic_kei_doit/video/7484987114208103687' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bear__english/video/7690478462171106581' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@taitond_toeic/video/7365848709256580353' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@ryokuntoeic/video/7266734902102543617' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@toeicmugittan/video/7678765662512188692', test: true },  // Q2 リスニング最初の1分半どう使うか？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@mocha.asakatsu/video/7569969881471405332', test: true },  // Q3 Part7は
+    { type: 'tiktok', url: 'https://www.tiktok.com/@tony_toeic7/video/7341731002244467970' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@toeicmugittan/video/7671291932311588117' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@comoenglish/video/7534623347766824199' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@toeic900_in_aus/video/7496793591117794578' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@kumiko_english_study/video/7261147028275612930' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@comoenglish/video/7592883939253996807', test: true },  // Q4 TOEIC Part7で点数を爆伸びさせる方法として挙げられていなか
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bearblog9ma/video/7407424752282897682' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bearblog9ma/video/7403260989556198663', test: true },  // Q5 TOEIC文法問題出る1000問は収録問題数は計何問と言われていた？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bearblog9ma/video/7399994739002461458' },  // Q6 TOEICリーディング5つのコツで紹介されていた効果的な文法教材は？（外す）
+    { type: 'tiktok', url: 'https://www.tiktok.com/@amy4_med/video/7102015888399813890' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@mina_jt/video/7050688808609729794' },
+    { type: 'youtube', id: 'ZH6cIUAoGaw' },
+    { type: 'youtube', id: 'rAeFNdS6vAQ' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@maari_english/video/7590704014258441493' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@muro_english/video/7468254225433136392' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@umeka0320/video/7523887798957444370' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@mocha.asakatsu/video/7551018573867584784', test: true },  // Q7 「リスニングのコツ3選で勉強の順番はPart1～4でどの順番と言って
+    { type: 'tiktok', url: 'https://www.tiktok.com/@english_hanah/video/7458227287922576648', test: true },  // Q8 「時間を無駄にする英語勉強法TOP3」で1位は何か？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@umeka0320/video/7532826397551693063', test: true },  // Q9 「TOEICリスニング満点取れた勉強法3選」で挙げられていなかったも
+    { type: 'tiktok', url: 'https://www.tiktok.com/@nemotoishappy/video/7482706874756795655' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@mocha.asakatsu/video/7558831325524905237' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@yuha_english05/video/7619872526155484423' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@english_hanah/video/7458577638987189522' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@comoenglish/video/7496428820572966151' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bear__english/video/7644497233827843348' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@eigo.nonote/video/7666804191980997909' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bearblog9ma/video/7434496254488431880' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@toeicmugittan/video/7688742426621775124' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@tomotoeic/video/7642519736852483335' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@english_hanah/video/7459704071528762632', test: true },  // Q10 「だれでも英語耳になれるリスニング勉強法」でリスニングに必要なスキル
+    { type: 'tiktok', url: 'https://www.tiktok.com/@yuto_gakutika/video/7639240534292319495' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@yuri_english/video/7504996285003353351' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bearblog9ma/video/7546185112027663633' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@english_tsubasa/video/7538799597137841426' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@toeicmugittan/video/7711335662657539349' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@comoenglish/video/7510884568308780306' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@english_yui/video/7576986712098868498' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@comoenglish/video/7537618315926310152' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@maari_english/video/7514648901471751442', test: true },  // Q11 点数が爆伸びする金フレの使い方として挙げられていないものは？
+  ],
+  unrelated: [
+    { type: 'tiktok', url: 'https://www.tiktok.com/@rakko.ranking/video/7692311254542617877' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@love__dog3150/video/7580344595582618898' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@sekaiomosiro/video/7694561768026164488' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@doubutuiyashi/video/7634165104833056007' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@tamasoundss/video/7667906151035538695' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@zoo92508/video/7642670585599872264' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@neko_neko_neeeko/video/7618890218036301063' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@ssq1725781544/video/7650162627607481621' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@doubutuiyashi/video/7678663511412722952' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@user2666149059015/video/7661884341403880711' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@petbuzz_today/video/7692391296618532117' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@akka21388fi/video/7627099228401061138' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@ejjcmamcsc/video/7711543664358575373' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@yyds88680/video/7701652900665134342' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@user7341316978139/video/7710915927373565206' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bobon__official/video/7700908275969264917' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@user3814193884367/video/7709778902020820232', test: true },  // U3 トランポリンに屋根から飛んだ「○○になりたい」の動物は？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@skylark.jp/video/7710175881486011669' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@23ab70f5/video/7710081308864679190' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@xuthanhhoatong9/video/7710253059561049366' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@goosenoichinichi/video/7702446593970031879', test: true },  // U4 茶色い猫がテレビで見ていた野球は、どことどこの試合？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@user4088722576013/video/7711280019850546454' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@gogonogourmet/video/7710471413932592391' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@5e0352ba/video/7711634542716636438' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@rainking.2027/video/7692058822118051092' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@ito_diet.bodymake/video/7698187416837934356' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@sakichannel_yeah/video/7700515181180308754' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@veu.harold.2007/video/7705595360936250646' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@safari.123546/video/7711284575485447432' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@user6785447500946.fan/video/7710547393409731861' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@zonbinson99/video/7711163415170993430' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@love__cat3150/video/7709305147553336577' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bobon__official/video/7699999568208891156' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@game213901/video/7710445748760055063' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@tyata00223/video/7711315172928933126' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@snowfallsparkle/video/7688021681352232200' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@candy_tune/video/7525079537030417671' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@mayune_shiraishi/video/7033170327773400322' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@matsumoto.assistant/video/7381008681049050369' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@waybe_inc/video/7461804372742163720' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@userwwmnh74u11/video/7212891717022928130' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@tomomi043011/video/7711287085096783111' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@saikooooo4519721/video/7709835669811531014' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@xts300/video/7471524204626595080' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@user65512614255421/video/7699702758395399446', test: true },  // U2 素敵な店員さん5位は？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@yukineko0077/video/7699819572819397909' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@buzz1movie/video/7710424290952367380', test: true },  // U1 日本語をしゃべる猫トップ5の2位は？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@oto.monogatari/video/7708347150412811528' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bobon__official/video/7711396151014018324', test: true },  // U5 仕事に遅刻した時の動画で、着いたらすぐ何と言う？
+  ]
+};
+const DEMO_REL = ['お湯の温度','豆の挽き目','ドリッパーの選び方','蒸らしの時間','注ぐ速さ','ペーパーの湿らせ方','豆の量と比率','淹れたあとの保存','スケールの使い方','フィルターの種類'];
+const DEMO_UNREL = ['猫のいる暮らし','筋トレ10分','京都の街歩き','ゲーム実況','ダンスのコツ','棚をDIY','スニーカー紹介','星空タイムラプス','犬の散歩','カレーの作り方','ギター弾いてみた','電車の車窓'];
+const TASK = 'お題：TOEICの勉強法';
+// 再生テストに使う動画を並べる範囲。関係ある動画は「はじめの何本」、関係ない動画は「関係ない動画のはじめの何本」
+const TEST_SPAN = 25, TEST_SPAN_UNREL = 10;
+// 問題あり動画が出ている最初の数秒は、スクロールできないようにする（0なら使わない）。動画の内容を見たかどうかまでは、強制できない
+const TEST_LOCK_S = 0;
+
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, Number.isFinite(v) ? v : a));
+
+function hashSeed(s){ let h = 2166136261; for (const c of s){ h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+function rng(a){ return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function shuffle(arr, r){ const a = arr.slice(); for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+// 関係ない動画が出る確率。視聴開始から start 分まで0、そこから視聴時間の終わり（limit 分）まで、pMax へ直線的に増やす（経過時間で決める）
+function pAt(t, c){
+  const t0 = c.start * 60, t1 = Math.max(t0 + 1, c.limit * 60);
+  return t <= t0 ? 0 : c.pmax * Math.min(1, (t - t0) / (t1 - t0));
+}
+const BUF = 2;   // いま見ている動画の、何本先まで用意しておくか
+
+function readCfg(){
+  return { pid: $('pid').value.trim() || 'P00', limit: clamp(+$('limit').value, 1, 120),
+    pmax: clamp(+$('pmax').value, 0, 100) / 100, start: clamp(+$('kt').value, 0, 120), dur: clamp(+$('dur').value, 2, 120), fast: clamp(+$('fast').value, 1, 30), debug: $('debug').checked };
+}
+
+function renderPlan(){
+  const c = readCfg(), N = Math.max(1, Math.round(c.limit));
+  $('strip').innerHTML = Array.from({ length: N }, (_, m) => {
+    const pc = Math.round(pAt((m + 0.5) * 60, c) * 100);
+    return '<i style="background:linear-gradient(to top,var(--unrel) ' + pc + '%,var(--rel) ' + pc + '%)"></i>';
+  }).join('');
+  $('stat').textContent = '0〜' + Math.min(c.start, c.limit) + '分は関係ある動画だけ。' + c.start + '分をすぎた最初のスワイプで、全員必ず関係ない動画が出ます。その後、' + c.limit + '分に向けて、関係ない動画の割合が 0% から ' + Math.round(c.pmax * 100) + '% へ増えます。';
+  const cnt = (a, t) => a.filter(x => !!x.test === t).length;
+  $('cat').textContent = '登録した動画：関係ある（問題あり ' + cnt(REAL.related, true) + '本・問題なし ' + cnt(REAL.related, false) + '本）　関係ない（問題あり ' + cnt(REAL.unrelated, true) + '本・問題なし ' + cnt(REAL.unrelated, false) + '本）';
+}
+
+// TikTokは、id か url（/video/数字）から動画IDを取り出す。取り出せないものは missing にする
+const ttIdOf = x => { if (x.id) return String(x.id); const m = /\/video\/(\d+)/.exec(x.url || ''); return m ? m[1] : ''; };
+function norm(x, kind, i){
+  const o = Object.assign({}, x, { kind, title: x.title || '' });
+  if (x.type === 'tiktok'){
+    const t = ttIdOf(x); o.missing = !t;
+    const sc = /tiktok\.com\/([^/?#]+)/.exec(x.short || '');
+    o.id = t || ('short:' + (sc ? sc[1] : kind[0] + (i + 1)));
+  } else o.id = x.id || x.src || (kind[0] + (i + 1));
+  return o;
+}
+function makeSeq(c){
+  const r = rng(hashSeed(c.pid));
+  const demo = (list, kind) => list.map((t, i) => ({ kind, type: 'demo', id: kind[0] + String(i + 1).padStart(2, '0'), title: t }));
+  const pool = {
+    related: REAL.related.length ? REAL.related.map((x, i) => norm(x, 'related', i)) : demo(DEMO_REL, 'related'),
+    unrelated: REAL.unrelated.length ? REAL.unrelated.map((x, i) => norm(x, 'unrelated', i)) : demo(DEMO_UNREL, 'unrelated')
+  };
+  // test: true の動画（再生テストに使う動画）は、はじめの span 本のなかで、ほぼ等間隔にばらけて並ぶ（人ごとに順番は変わる）
+  const spread = (list, span) => {
+    const t = shuffle(list.filter(x => x.test), r), o = shuffle(list.filter(x => !x.test), r);
+    if (!t.length) return o;
+    const sp = Math.max(t.length, span), used = new Set(), at = [];
+    t.forEach(x => { const j = at.length; let p = Math.floor((j + 0.15 + 0.7 * r()) * sp / t.length); while (used.has(p)) p++; used.add(p); at.push([p, x]); });
+    const out = o.slice(); at.sort((a, b) => a[0] - b[0]).forEach(([p, x]) => out.splice(p, 0, x));
+    return out;
+  };
+  const order = { related: spread(pool.related, TEST_SPAN), unrelated: spread(pool.unrelated, TEST_SPAN_UNREL) }, pos = { related: 0, unrelated: 0 };
+  let acc = 0, index = 0;
+  const testIds = pool.related.concat(pool.unrelated).filter(x => x.test).map(x => x.id);
+  // 次の1本を、その時点の経過時間から決める。確率を足し込んで、割合どおりに、ほぼ等間隔で関係ない動画を入れる
+  return { testIds, force: false, rewind(removed){ removed.forEach(x => { pos[x.kind]--; }); index -= removed.length; }, next(){
+    const tNow = (performance.now() - S.t0) / 1000;
+    let kind = 'related';
+    if (this.force){ this.force = false; kind = 'unrelated'; acc = 0; }   // 出し始める時刻をすぎたあと、最初の1本は、全員必ず関係ない動画
+    else if (tNow > c.start * 60){ acc += pAt(tNow, c); if (acc >= 1){ kind = 'unrelated'; acc -= 1; } }
+    // 動画が足りなくなって2周目に入ったら、再生テスト用の動画は出さない（もう一度見ると、答えやすくなるため）
+    const list = order[kind], k2 = pos[kind]++; let base, round;
+    if (k2 < list.length){ base = list[k2]; round = 0; }
+    else { const rest = list.filter(x => !x.test), pl = rest.length ? rest : list; base = pl[(k2 - list.length) % pl.length]; round = 1 + Math.floor((k2 - list.length) / pl.length); }
+    return Object.assign({}, base, { index: index++, kind, round });
+  } };
+}
+
+/* ---- プレーヤー（試作用 / 動画ファイル / YouTube） ---- */
+class DemoPlayer {
+  constructor(item, host, dur, onEnded, h){
+    this.dur = dur * 1000; this.t = 0; this.onEnded = onEnded; this.h = h; h.dur(dur);
+    const hue = item.kind === 'related' ? 28 + (item.index * 7) % 18 : 190 + (item.index * 37) % 120;
+    host.innerHTML = '<div class="demo" style="background:linear-gradient(160deg,hsl(' + hue + ' 55% 34%),hsl(' + (hue + 25) + ' 60% 16%))">' +
+      '<div class="s">' + TASK + '</div><div class="t"></div><div class="s">試作用の動画（' + dur + '秒でくり返し）</div><div class="bar"><i></i></div></div>';
+    host.querySelector('.t').textContent = item.title;
+    this.bar = host.querySelector('.bar i');
+  }
+  play(){ this.t = 0; this.last = performance.now(); this.h.play(); const tick = now => { this.t += now - this.last; this.last = now;
+      if (this.t >= this.dur){ this.t = 0; this.onEnded(); } this.bar.style.transform = 'scaleX(' + (this.t / this.dur) + ')'; this.raf = requestAnimationFrame(tick); };
+    this.raf = requestAnimationFrame(tick); }
+  pause(){ cancelAnimationFrame(this.raf); this.h.stop(); }
+}
+class FilePlayer {
+  constructor(item, host, dur, onEnded, h){
+    this.v = document.createElement('video'); this.v.src = item.src; this.v.playsInline = true; this.v.preload = 'auto';
+    this.v.addEventListener('ended', () => { onEnded(); this.play(); });
+    this.v.addEventListener('playing', () => h.play());
+    this.v.addEventListener('pause', () => h.stop());
+    this.v.addEventListener('waiting', () => h.stop());
+    this.v.addEventListener('loadedmetadata', () => h.dur(this.v.duration));
+    host.appendChild(this.v);
+  }
+  play(){ this.v.currentTime = 0; const p = this.v.play(); if (p && p.catch) p.catch(() => {}); }
+  pause(){ this.v.pause(); }
+}
+let ytLoading = null;
+function loadYT(){
+  if (ytLoading) return ytLoading;
+  ytLoading = new Promise(res => { if (window.YT && window.YT.Player) return res();
+    const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; window.onYouTubeIframeAPIReady = () => res(); document.head.appendChild(s); });
+  return ytLoading;
+}
+// YouTubeのプレーヤーは1つだけ作り、動画を差し替えて再生する（最初の1回のタップだけで、以後は自動で再生されやすくなる）
+const YTS = {
+  p: null, ready: null, layer: null, tap: null, owner: null, playing: false, want: false, timer: null,
+  aligned(){ const f = $('feed'); return !S || S.active < 0 || Math.abs(f.scrollTop - S.active * f.clientHeight) < 3; },
+  ensure(){
+    if (this.ready) return this.ready;
+    this.ready = loadYT().then(() => new Promise(res => {
+      const fs = $('feedScreen'), L = document.createElement('div'); L.className = 'ytlayer'; fs.insertBefore(L, fs.querySelector('.hud'));
+      const d = document.createElement('div'); L.appendChild(d);
+      const t = document.createElement('button'); t.type = 'button'; t.hidden = true; t.className = 'yttap'; t.textContent = 'タップして再生';
+      t.addEventListener('click', () => { t.hidden = true; this.p.playVideo(); });
+      L.appendChild(t); this.layer = L; this.tap = t;
+      this.p = new window.YT.Player(d, { playerVars: { playsinline: 1, controls: 0, rel: 0, modestbranding: 1, fs: 0, disablekb: 1, iv_load_policy: 3 },
+        events: { onReady: () => res(), onAutoplayBlocked: () => this.blocked(), onStateChange: e => this.state(e.data),
+          onError: e => { if (this.owner) log('video_error', { index: this.owner.item.index, video_id: this.owner.item.id, kind: this.owner.item.kind, note: 'youtube_error ' + e.data }); } } });
+    }));
+    return this.ready;
+  },
+  blocked(){ if (this.want && this.layer){ this.layer.style.visibility = 'visible'; this.tap.hidden = false; } },
+  state(s){
+    const h = this.owner && this.owner.h;
+    if (s === 1){
+      this.playing = true; this.tap.hidden = true; clearTimeout(this.timer); if (this.aligned()) this.layer.style.visibility = 'visible';
+      if (h){ try { h.dur(this.p.getDuration()); } catch (e) {} h.play(); }
+    }
+    else if (s === 0){ if (h) h.stop(); if (this.want && this.owner){ this.owner.onEnded(); this.p.seekTo(0); this.p.playVideo(); } }
+    else { if (h) h.stop(); if (s !== 3) this.playing = false; }
+  },
+  play(owner){
+    this.owner = owner; this.want = true; this.playing = false;
+    if (this.layer){ this.layer.style.visibility = 'hidden'; this.tap.hidden = true; }
+    this.ensure().then(() => {
+      if (!this.want || this.owner !== owner) return;
+      this.p.loadVideoById(owner.item.id);
+      clearTimeout(this.timer); this.timer = setTimeout(() => { if (!this.playing) this.blocked(); }, 1500);
+    });
+  },
+  pause(owner){
+    if (this.owner !== owner) return;
+    this.want = false; clearTimeout(this.timer);
+    if (this.p && this.p.pauseVideo) this.p.pauseVideo();
+    if (this.layer){ this.layer.style.visibility = 'hidden'; this.tap.hidden = true; }
+  },
+  hideTemp(){ if (this.layer && this.want) this.layer.style.visibility = 'hidden'; },
+  showIfReady(){ if (this.layer && this.want && (this.playing || !this.tap.hidden)) this.layer.style.visibility = 'visible'; }
+};
+class YTPlayer {
+  constructor(item, host, dur, onEnded, h){ this.item = item; this.onEnded = onEnded; this.h = h; }
+  play(){ YTS.play(this); }
+  pause(){ YTS.pause(this); }
+}
+
+// TikTokの埋め込みプレーヤー（動画ごとにiframeを作る。再生・一時停止は postMessage で操作）
+const TT = [];
+window.addEventListener('message', e => {
+  const d = e.data;
+  if (!d || !d['x-tiktok-player']) return;
+  const p = TT.find(x => x.ifr && x.ifr.contentWindow === e.source);
+  if (p) p.onMsg(d);
+});
+class TTPlayer {
+  constructor(item, host, dur, onEnded, h){
+    this.h = h; this.item = item; this.host = host; this.onEnded = onEnded; this.ifr = null; this.ready = false; this.want = false; this.playing = false; TT.push(this);
+    this.tap = document.createElement('button'); this.tap.type = 'button'; this.tap.hidden = true; this.tap.className = 'yttap'; this.tap.textContent = 'タップして再生';
+    this.tap.addEventListener('click', () => {
+      this.tap.hidden = true; this.send('play');
+      // それでも再生されなければ、TikTok自身の再生ボタンを直接押せるようにする
+      clearTimeout(this.timer2);
+      this.timer2 = setTimeout(() => { if (!this.playing && this.want && this.ifr) this.ifr.style.pointerEvents = 'auto'; }, 1000);
+    });
+    host.appendChild(this.tap);
+    // 自動再生が止められて、音を消して再生したときだけ出す、小さなボタン
+    this.chip = document.createElement('button'); this.chip.type = 'button'; this.chip.hidden = true; this.chip.className = 'ttchip'; this.chip.textContent = 'タップして音を出す';
+    this.chip.addEventListener('click', () => { this.send('unMute'); this.chip.hidden = true; S.sound = true; log('unmute_tap', { index: this.item.index, video_id: this.item.id, kind: this.item.kind }); });
+    host.appendChild(this.chip);
+  }
+  showMissing(){
+    if (this.msg) return;
+    const d = document.createElement('div'); d.className = 'demo';
+    d.innerHTML = '<div class="t"></div><div class="s">TikTokの動画IDが未設定です（REAL の id か url を入れてください）</div><div class="s"></div>';
+    d.querySelector('.t').textContent = '動画ID未設定'; d.lastChild.textContent = this.item.short || '';
+    this.host.appendChild(d); this.msg = d;
+  }
+  build(){
+    if (this.ifr) return;
+    const f = document.createElement('iframe');
+    f.src = 'https://www.tiktok.com/player/v1/' + encodeURIComponent(this.item.id) + '?controls=0&description=0&music_info=0&rel=0&loop=0&autoplay=1';
+    f.allow = 'autoplay; fullscreen; encrypted-media'; this.host.insertBefore(f, this.host.firstChild); this.ifr = f;
+  }
+  send(type, value){
+    if (!this.ifr || !this.ifr.contentWindow) return;
+    const m = { 'x-tiktok-player': true, type }; if (value !== undefined) m.value = value;
+    this.ifr.contentWindow.postMessage(m, '*');
+  }
+  onMsg(d){
+    if (d.type === 'onPlayerReady'){ this.ready = true; if (this.want) this.start(); }
+    else if (d.type === 'onStateChange'){
+      if (d.value === 1){ this.playing = true; this.tap.hidden = true; clearTimeout(this.timer); clearTimeout(this.timer3);
+        if (this.muted && !S.sound) this.chip.hidden = false;
+        else if (S.sound) this.send('unMute'); if (this.ifr) this.ifr.style.pointerEvents = 'none'; this.h.play(); }
+      else if (d.value === 0){ this.h.stop(); if (this.want){ this.onEnded(); this.send('seekTo', 0); this.send('play'); } }
+      else { this.h.stop(); if (d.value === 2 || d.value === -1) this.playing = false; }
+    } else if (d.type === 'onCurrentTime'){
+      const v = d.value, dur = v && typeof v === 'object' ? v.duration : d.duration;
+      if (dur) this.h.dur(+dur);
+    } else if (d.type === 'onPlayerError'){
+      const v = d.value, code = v && typeof v === 'object' ? v.errorCode : v;
+      log('video_error', { index: this.item.index, video_id: this.item.id, kind: this.item.kind, note: 'tiktok_error ' + code });
+      if (this.want) this.tap.hidden = false;
+    }
+  }
+  start(){ this.send('seekTo', 0); this.send('play'); }
+  play(){
+    if (this.item.missing){
+      this.showMissing();
+      log('video_error', { index: this.item.index, video_id: this.item.id, kind: this.item.kind, note: 'tiktok_id_missing' });
+      return;
+    }
+    this.want = true; this.playing = false; this.muted = false; this.build();
+    if (this.ready) this.start();
+    // 1.5秒たっても再生されなければ、音を消して再生を試す。3.5秒でもだめなら、タップ表示を出す
+    clearTimeout(this.timer); clearTimeout(this.timer3);
+    this.timer = setTimeout(() => {
+      if (!this.playing && this.want){ this.muted = true; this.send('mute'); this.send('play'); log('autoplay_blocked', { index: this.item.index, video_id: this.item.id, kind: this.item.kind, note: 'try_muted' }); }
+    }, 1500);
+    this.timer3 = setTimeout(() => { if (!this.playing && this.want) this.tap.hidden = false; }, 3500);
+  }
+  pause(){
+    this.want = false; clearTimeout(this.timer); clearTimeout(this.timer2); clearTimeout(this.timer3); this.tap.hidden = true; this.chip.hidden = true;
+    if (this.ifr) this.ifr.style.pointerEvents = 'none';
+    if (this.ready) this.send('pause');
+  }
+}
+
+/* ---- セッション ---- */
+let S = null;
+const num = (v, d) => (v == null || !Number.isFinite(+v)) ? '' : (+v).toFixed(d);
+const median = a => { if (!a.length) return null; const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+
+function log(event, extra){
+  if (!S) return;
+  S.events.push(Object.assign({ t_epoch_ms: Date.now(), t_rel_s: ((performance.now() - S.t0) / 1000).toFixed(3), event }, extra || {}));
+}
+
+// --- スクロール（1回のスワイプ＝動きはじめから止まるまで） ---
+function trackScroll(){
+  const now = performance.now(), f = $('feed');
+  if (!S.sg){ S.sgId++; S.sg = { id: S.sgId, t0: now, last: now, y0: f.scrollTop, y1: f.scrollTop }; log('scroll_start', { note: 'gesture=' + S.sgId }); }
+  S.sg.last = now; S.sg.y1 = f.scrollTop;
+}
+function finishScroll(){
+  const g = S.sg; if (!g) return; S.sg = null;
+  const sec = (g.last - g.t0) / 1000, px = Math.abs(g.y1 - g.y0);
+  log('scroll_end', { scroll_s: sec.toFixed(3), scroll_px: Math.round(px), note: 'gesture=' + g.id });
+  S.scrolls.push({ s: sec, px });
+  const v = S.visits[S.visits.length - 1];
+  if (v && v.scrollId === g.id){ v.scrollS = sec; v.scrollPx = px; }
+}
+function onFeedScroll(){
+  if (!S || S.ended) return;
+  trackScroll(); S.lastScrollAt = performance.now();
+  YTS.hideTemp(); clearTimeout(S.sc);
+  S.sc = setTimeout(() => { finishScroll(); if (YTS.aligned()) YTS.showIfReady(); }, 150);
+}
+
+// --- 画面に触れた記録（タップ／スワイプ） ---
+function bindTouch(){
+  const fs = $('feedScreen');
+  fs.addEventListener('pointerdown', e => {
+    if (!S || S.ended) return;
+    const t = e.target, c = sel => !!(t && t.closest && t.closest(sel));
+    S.tp = { t: performance.now(), x: e.clientX, y: e.clientY, moved: false, tapPlay: c('.yttap'), stop: c('.stop') };
+  }, { passive: true });
+  fs.addEventListener('pointermove', e => {
+    const p = S && S.tp; if (p && !p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 12) p.moved = true;
+  }, { passive: true });
+  const up = () => {
+    const p = S && S.tp; if (!p) return; S.tp = null;
+    if (p.stop || S.ended) return;
+    const kind = (p.moved || S.sg) ? 'swipe' : (p.tapPlay ? 'tap_play' : 'tap');
+    log('touch', { touch_s: ((performance.now() - p.t) / 1000).toFixed(3), note: kind });
+    S.touches.push({ t: (p.t - S.t0) / 1000, kind });
+  };
+  fs.addEventListener('pointerup', up); fs.addEventListener('pointercancel', up);
+}
+
+// --- 再生している時間（動画ごと） ---
+function curVisit(i){ const v = S && S.visits[S.visits.length - 1]; return (v && v.index === i && !v.left && !S.ended) ? v : null; }
+function playOn(i){
+  const v = curVisit(i); if (!v || v.playSince != null) return;
+  v.playSince = performance.now(); if (v.firstPlayAt == null) v.firstPlayAt = v.playSince;
+  log('play_start', { index: i, video_id: v.id, kind: v.kind, type: v.type });
+}
+function playOff(i, quiet){
+  const v = curVisit(i); if (!v || v.playSince == null) return;
+  v.playMs += performance.now() - v.playSince; v.playSince = null;
+  if (!quiet) log('play_stop', { index: i, video_id: v.id, kind: v.kind, type: v.type });
+}
+function setDur(i, d){ if (S && S.durs[i] == null && Number.isFinite(d) && d > 0) S.durs[i] = d; }
+
+function activate(i){
+  if (!S || S.ended || i === S.active) return;
+  const from = S.active;
+  if (from >= 0) leave(from, 'scroll');
+  S.active = i; const it = S.items[i]; S.enteredAt = performance.now();
+  const dir = from >= 0 ? (i > from ? 'down' : 'up') : 'first';
+  S.visits.push({ n: S.visits.length + 1, index: i, id: it.id, kind: it.kind, type: it.type, enter: S.enteredAt, dir, left: false,
+    playMs: 0, playSince: null, firstPlayAt: null, endedAtEnter: S.endedCount[i], scrollId: S.sg ? S.sg.id : null, scrollS: null, scrollPx: null });
+  log('video_show', { index: i, video_id: it.id, kind: it.kind, type: it.type, from_index: from >= 0 ? from : '', note: from >= 0 ? dir : 'first' });
+  S.players[i].play();
+  ensureAhead(i);
+  if (TEST_LOCK_S > 0 && it.test){
+    const f = $('feed'); f.style.overflowY = 'hidden'; clearTimeout(S.lk);
+    log('lock_start', { index: i, video_id: it.id, kind: it.kind, note: 'lock_s=' + TEST_LOCK_S });
+    S.lk = setTimeout(() => { f.style.overflowY = ''; log('lock_end', { index: i, video_id: it.id, kind: it.kind }); }, TEST_LOCK_S * 1000);
+  }
+  updateDbg();
+}
+function leave(i, why){
+  const it = S.items[i], v = S.visits[S.visits.length - 1], now = performance.now();
+  S.players[i].pause();
+  playOff(i, true);
+  v.left = true; v.why = why; v.leave = now; v.dwell = (now - v.enter) / 1000; v.play = v.playMs / 1000;
+  v.loops = S.endedCount[i] - v.endedAtEnter; v.dur = S.durs[i];
+  v.delay = v.firstPlayAt != null ? (v.firstPlayAt - v.enter) / 1000 : null;
+  log('video_leave', { index: i, video_id: it.id, kind: it.kind, type: it.type, dwell_s: v.dwell.toFixed(3), play_s: v.play.toFixed(3),
+    duration_s: num(v.dur, 2), completed: v.loops > 0 ? 1 : 0, note: why });
+}
+function updateDbg(){
+  if (!S || !S.cfg.debug) return;
+  const it = S.items[S.active]; if (!it) return;
+  const el = ((performance.now() - S.t0) / 1000), m = Math.floor(el / 60), s = Math.floor(el % 60);
+  const unrelSoFar = S.items.slice(0, S.active + 1).filter(x => x.kind === 'unrelated').length;
+  $('dbg').textContent = (S.active + 1) + ' 本目\n' + (it.kind === 'related' ? '関係ある' : '関係ない') + '（' + it.type + '）' + (it.test ? ' 問題あり' : '') + '\n経過 ' + m + ':' + String(s).padStart(2, '0') + ' / ' + S.cfg.limit + ':00\n関係ない累計 ' + unrelSoFar + '本\n今の確率 ' + Math.round(pAt(m * 60 + s, S.cfg) * 100) + '%';
+}
+function addSlide(){
+  const it = S.gen.next(), i = it.index, feed = $('feed');
+  S.items.push(it); S.endedCount.push(0); S.durs.push(null);
+  const slide = document.createElement('section'); slide.className = 'slide'; slide.dataset.i = i;
+  feed.appendChild(slide);
+  const onEnded = () => { S.endedCount[i]++; log('video_ended', { index: i, video_id: it.id, kind: it.kind, note: 'count=' + S.endedCount[i] }); };
+  const hooks = { play: () => playOn(i), stop: () => playOff(i), dur: d => setDur(i, d) };
+  const P = it.type === 'file' ? FilePlayer : it.type === 'youtube' ? YTPlayer : it.type === 'tiktok' ? TTPlayer : DemoPlayer;
+  S.players.push(new P(it, slide, S.cfg.dur, onEnded, hooks));
+  S.io.observe(slide);
+}
+// 出し始める時刻（既定15分）になったとき、まだ見ていない先読み分を作り直して、次にスワイプしたとき必ず関係ない動画が出るようにする
+function rebuildAhead(){
+  const keep = S.active + 1;
+  for (let i = S.items.length - 1; i >= keep; i--){
+    const sl = document.querySelector('.slide[data-i="' + i + '"]');
+    if (sl){ S.io.unobserve(sl); sl.remove(); }
+  }
+  const removed = S.items.splice(keep); S.players.length = keep; S.endedCount.length = keep; S.durs.length = keep;
+  S.gen.rewind(removed); S.gen.force = true; ensureAhead(S.active);
+  log('unrelated_onset', { index: keep, note: 'elapsed_s=' + Math.round((performance.now() - S.t0) / 1000) });
+}
+function ensureAhead(i){ while (S.items.length < i + 1 + BUF) addSlide(); }
+function start(){
+  const cfg = readCfg(), feed = $('feed');
+  feed.innerHTML = '';
+  S = { cfg, items: [], players: [], endedCount: [], durs: [], events: [], visits: [], scrolls: [], touches: [],
+    sg: null, sgId: 0, tp: null, active: -1, ended: false, t0: performance.now(), startedAt: new Date() };
+  S.gen = makeSeq(cfg); S.testIds = S.gen.testIds;
+  S.io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting && e.intersectionRatio >= 0.6) activate(+e.target.dataset.i); }), { root: feed, threshold: [0.6] });
+  for (let i = 0; i <= BUF; i++) addSlide();
+  $('setup').hidden = true; $('endScreen').hidden = true; $('feedScreen').hidden = false;
+  $('dbg').hidden = !cfg.debug;
+  feed.onscroll = onFeedScroll;
+  feed.scrollTop = 0;
+  log('session_start', { note: 'pid=' + cfg.pid + ' limit_min=' + cfg.limit + ' unrelated_from_min=' + cfg.start + ' pmax=' + cfg.pmax + ' fast_s=' + cfg.fast + ' iso=' + S.startedAt.toISOString() });
+  activate(0);
+  S.timer = setInterval(() => {
+    updateDbg();
+    if (!S.onset && (performance.now() - S.t0) / 1000 >= cfg.start * 60 && (performance.now() - (S.lastScrollAt || 0)) > 500){ S.onset = true; rebuildAhead(); }
+     if ((performance.now() - S.t0) / 1000 >= cfg.limit * 60) end('time_limit'); }, 250);
+  try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(w => { S.wake = w; }).catch(() => {}); } catch (e) {}
+  try { feed.focus(); } catch (e) {}
+}
+
+/* ---- 集計 ---- */
+const q = v => { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+const table = (cols, rows) => [cols.join(',')].concat(rows.map(r => cols.map(c => q(r[c])).join(','))).join('\n');
+
+function eventsCsv(){
+  return table(['t_epoch_ms', 't_rel_s', 'event', 'index', 'video_id', 'kind', 'type', 'dwell_s', 'play_s', 'duration_s', 'completed', 'from_index', 'scroll_s', 'scroll_px', 'touch_s', 'note'], S.events);
+}
+function visitRows(){
+  const fast = S.cfg.fast;
+  return S.visits.map(v => ({
+    visit: v.n, index: v.index, video_id: v.id, kind: v.kind, type: v.type,
+    enter_t_s: num((v.enter - S.t0) / 1000, 3), leave_t_s: num((v.leave - S.t0) / 1000, 3),
+    dwell_s: num(v.dwell, 3), play_s: num(v.play, 3), duration_s: num(v.dur, 2),
+    play_ratio: v.dur ? num(v.play / v.dur, 3) : '', start_delay_s: num(v.delay, 3),
+    loops: v.loops, completed: v.loops > 0 ? 1 : 0, direction: v.dir, leave_reason: v.why,
+    scroll_before_s: num(v.scrollS, 3), scroll_before_px: v.scrollPx == null ? '' : Math.round(v.scrollPx),
+    fast_skip: v.why === 'scroll' ? (v.dwell < fast ? 1 : 0) : '',
+    test: S.items[v.index].test ? 1 : 0,
+    category: v.kind + (S.items[v.index].test ? '_test' : '_other')
+  }));
+}
+function metrics(){
+  const vs = S.visits, T = (S.tEnd - S.t0) / 1000, fast = S.cfg.fast;
+  const done = vs.filter(v => v.why === 'scroll');
+  const half = x => (x.enter - S.t0) / 1000 < T / 2;
+  const dw = a => a.map(v => v.dwell);
+  let streak = 0, maxStreak = 0;
+  done.forEach(v => { if (v.dwell < fast){ streak++; maxStreak = Math.max(maxStreak, streak); } else streak = 0; });
+  const sc = S.scrolls.filter(g => g.px >= 10);
+  const pts = [0].concat(S.touches.map(t => t.t), [T]); let gap = 0;
+  for (let i = 1; i < pts.length; i++) gap = Math.max(gap, pts[i] - pts[i - 1]);
+  const dwellAll = vs.reduce((a, v) => a + v.dwell, 0), playAll = vs.reduce((a, v) => a + v.play, 0);
+  const ratios = done.filter(v => v.dur).map(v => v.play / v.dur);
+  const tIds = new Set(S.testIds), seenT = new Set(vs.filter(v => tIds.has(v.id)).map(v => v.id));
+  return {
+    pid: S.cfg.pid, session_s: T, n_visits: vs.length, n_videos: new Set(vs.map(v => v.index)).size, n_back: vs.filter(v => v.dir === 'up').length,
+    n_related: vs.filter(v => v.kind === 'related').length, n_unrelated: vs.filter(v => v.kind === 'unrelated').length,
+    dwell_median_s: median(dw(done)), dwell_mean_s: mean(dw(done)),
+    dwell_median_first_half_s: median(dw(done.filter(half))), dwell_median_second_half_s: median(dw(done.filter(v => !half(v)))),
+    dwell_median_related_s: median(dw(done.filter(v => v.kind === 'related'))), dwell_median_unrelated_s: median(dw(done.filter(v => v.kind === 'unrelated'))),
+    dwell_mean_first_half_s: mean(dw(done.filter(half))), dwell_mean_second_half_s: mean(dw(done.filter(v => !half(v)))),
+    dwell_mean_related_s: mean(dw(done.filter(v => v.kind === 'related'))), dwell_mean_unrelated_s: mean(dw(done.filter(v => v.kind === 'unrelated'))),
+    play_total_s: playAll, dwell_total_s: dwellAll, play_share: dwellAll ? playAll / dwellAll : null, play_ratio_median: median(ratios),
+    fast_threshold_s: fast, fast_skip_n: done.filter(v => v.dwell < fast).length, fast_skip_rate: done.length ? done.filter(v => v.dwell < fast).length / done.length : null, fast_skip_max_streak: maxStreak,
+    complete_rate: done.length ? done.filter(v => v.loops > 0).length / done.length : null, loops_total: vs.reduce((a, v) => a + v.loops, 0),
+    scroll_n: sc.length, scroll_total_s: sc.reduce((a, g) => a + g.s, 0), scroll_median_s: median(sc.map(g => g.s)), scroll_median_px: median(sc.map(g => g.px)),
+    touch_n: S.touches.length, tap_n: S.touches.filter(t => t.kind === 'tap').length, longest_no_touch_s: gap,
+    test_total: tIds.size, test_reached: seenT.size, test_missed: Array.from(tIds).filter(x => !seenT.has(x)).join(' ')
+  };
+}
+const SUMMARY_LABELS = [
+  ['session_s', '視聴した時間（秒）', 1], ['n_visits', '表示した回数（戻った分を含む）', 0], ['n_videos', '見た動画の本数', 0], ['n_back', '上に戻った回数', 0],
+  ['dwell_median_s', '1本あたりの滞在時間・中央値（秒）', 1], ['dwell_median_first_half_s', '　前半の中央値（秒）', 1], ['dwell_median_second_half_s', '　後半の中央値（秒）', 1],
+  ['dwell_median_related_s', '　関係ある動画の中央値（秒）', 1], ['dwell_median_unrelated_s', '　関係ない動画の中央値（秒）', 1],
+  ['dwell_mean_s', '1本あたりの滞在時間・平均（秒）', 1], ['dwell_mean_first_half_s', '　前半の平均（秒）', 1], ['dwell_mean_second_half_s', '　後半の平均（秒）', 1],
+  ['dwell_mean_related_s', '　関係ある動画の平均（秒）', 1], ['dwell_mean_unrelated_s', '　関係ない動画の平均（秒）', 1],
+  ['play_share', '滞在のうち実際に再生していた割合', 2], ['play_ratio_median', '動画の長さに対する再生時間の割合・中央値', 2],
+  ['fast_skip_rate', 'すぐスキップした割合', 2], ['fast_skip_max_streak', 'すぐスキップが続いた最大の回数', 0], ['complete_rate', '最後まで見た割合', 2],
+  ['scroll_n', 'スクロールの回数', 0], ['scroll_total_s', 'スクロールしていた時間の合計（秒）', 1], ['scroll_median_s', '1回のスクロール時間・中央値（秒）', 2],
+  ['touch_n', '画面に触れた回数', 0], ['tap_n', '　うち、タップ（スワイプ以外）', 0], ['longest_no_touch_s', '触れていない最長の時間（秒）', 1],
+  ['test_total', '再生テスト用の動画の本数', 0], ['test_reached', '　そのうち、画面に出た本数', 0]
+];
+function buildOutputs(){
+  const m = metrics(), cols = Object.keys(m);
+  const row = {}; cols.forEach(c => { row[c] = typeof m[c] === 'number' ? (Number.isInteger(m[c]) ? m[c] : +m[c].toFixed(4)) : (m[c] == null ? '' : m[c]); });
+  S.out = { events: eventsCsv(), visits: table(Object.keys(visitRows()[0] || { visit: 1 }), visitRows()), summary: table(cols, [row]) };
+  $('sumView').innerHTML = SUMMARY_LABELS.map(([k, label, d]) => '<span>' + label + '</span><span>' + (m[k] == null ? '–' : (+m[k]).toFixed(d)) + '</span>').join('');
+}
+const KIND_NOTE = {
+  events: '時刻順のすべての記録。スクロールの開始・終了、再生の開始・停止、画面に触れた記録も入っています。',
+  visits: '動画を画面に出した1回ごとの1行。滞在時間、実際の再生時間、動画の長さ、直前のスクロール時間などです。',
+  summary: '参加者1人につき1行。分析で人を並べるときに使います。'
+};
+function showKind(k){
+  S.kind = k; $('csv').value = S.out[k]; $('kindNote').textContent = KIND_NOTE[k]; $('msg').textContent = '';
+  document.querySelectorAll('[data-k]').forEach(b => { const on = b.dataset.k === k; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+}
+function end(reason){
+  if (!S || S.ended) return;
+  finishScroll();
+  if (S.active >= 0) leave(S.active, 'end');
+  S.ended = true; clearTimeout(S.lk); $('feed').style.overflowY = ''; S.tEnd = performance.now(); clearInterval(S.timer); S.io.disconnect();
+  S.players.forEach(p => p.pause());
+  log('session_end', { note: reason });
+  try { if (S.wake) S.wake.release(); } catch (e) {}
+  const shown = new Set(S.events.filter(e => e.event === 'video_show').map(e => e.index));
+  const un = S.items.filter(x => shown.has(x.index) && x.kind === 'unrelated').length;
+  $('endStat').textContent = '参加者 ' + S.cfg.pid + '　見た動画 ' + shown.size + '本（関係ない動画 ' + un + '本）　終了の理由：' + (reason === 'time_limit' ? '時間切れ' : '終了ボタン');
+  buildOutputs(); showKind('events');
+  $('feedScreen').hidden = true; $('endScreen').hidden = false;
+}
+
+$('start').addEventListener('click', start);
+$('stop').addEventListener('click', () => end('manual'));
+$('again').addEventListener('click', () => { $('endScreen').hidden = true; $('setup').hidden = false; });
+document.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => { if (S && S.out) showKind(b.dataset.k); }));
+$('copy').addEventListener('click', () => {
+  const ta = $('csv');
+  const fallback = () => { ta.focus(); ta.select(); $('msg').textContent = '選択しました。コピーしてください。'; };
+  try { navigator.clipboard.writeText(ta.value).then(() => { $('msg').textContent = 'コピーしました。'; }, fallback); } catch (e) { fallback(); }
+});
+function saveCsv(kind){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + S.out[kind]], { type: 'text/csv' }));
+  a.download = 'viewing_' + kind + '_' + S.cfg.pid + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+$('dl').addEventListener('click', () => {
+  try { saveCsv(S.kind); $('msg').textContent = '保存を試しました。保存されないときは、コピーして使ってください。'; }
+  catch (e) { $('msg').textContent = 'この画面では保存できません。コピーして使ってください。'; }
+});
+$('dlAll').addEventListener('click', () => {
+  try { ['events', 'visits', 'summary'].forEach((k, i) => setTimeout(() => saveCsv(k), i * 400)); $('msg').textContent = '3つの保存を試しました。保存されないときは、1つずつコピーして使ってください。'; }
+  catch (e) { $('msg').textContent = 'この画面では保存できません。コピーして使ってください。'; }
+});
+document.addEventListener('visibilitychange', () => { if (S && !S.ended) log(document.hidden ? 'page_hidden' : 'page_visible'); });
+bindTouch();
+['pid','limit','pmax','kt','dur','fast'].forEach(id => $(id).addEventListener('input', renderPlan));
+if (location.protocol === 'file:' && [].concat(REAL.related, REAL.unrelated).some(x => x.type === 'youtube' || x.type === 'tiktok')) $('fileWarn').hidden = false;
+{ const miss = [].concat(REAL.related, REAL.unrelated).filter(x => x.type === 'tiktok' && !ttIdOf(x)).length;
+  if (miss){ $('ttWarn').textContent = 'TikTokの動画IDが未設定の動画が ' + miss + '本あります。このままでは再生されず、「動画ID未設定」と表示されます。'; $('ttWarn').hidden = false; } }
+renderPlan();
+window.__feedTest = { get S(){ return S; }, end, activate };
+})();
+</script>
+</body></html>
