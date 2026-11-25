@@ -453,10 +453,10 @@ class TTPlayer {
     d.querySelector('.t').textContent = '動画ID未設定'; d.lastChild.textContent = this.item.short || '';
     this.host.appendChild(d); this.msg = d;
   }
-  build(){
+  build(auto){
     if (this.ifr) return;
     const f = document.createElement('iframe');
-    f.src = 'https://www.tiktok.com/player/v1/' + encodeURIComponent(this.item.id) + '?controls=0&description=0&music_info=0&rel=0&loop=0&autoplay=1';
+    f.src = 'https://www.tiktok.com/player/v1/' + encodeURIComponent(this.item.id) + '?controls=0&description=0&music_info=0&rel=0&loop=0&autoplay=' + (auto ? 1 : 0);
     f.allow = 'autoplay; fullscreen; encrypted-media'; this.host.insertBefore(f, this.host.firstChild); this.ifr = f;
   }
   send(type, value){
@@ -482,13 +482,17 @@ class TTPlayer {
     }
   }
   start(){ this.send('seekTo', 0); this.send('play'); }
+  // 次に見る動画を、先に読み込んでおく（再生はしない）。スクロールしたあとの待ち時間を減らすため
+  preload(){ if (!this.item.missing) this.build(false); }
+  // 通りすぎた動画のプレーヤーは、メモリを空けるため、しばらくしたら外す（戻ったときは作り直す）
+  release(){ if (!this.ifr) return; this.pause(); this.ifr.remove(); this.ifr = null; this.ready = false; }
   play(){
     if (this.item.missing){
       this.showMissing();
       log('video_error', { index: this.item.index, video_id: this.item.id, kind: this.item.kind, note: 'tiktok_id_missing' });
       return;
     }
-    this.want = true; this.playing = false; this.muted = false; this.build();
+    this.want = true; this.playing = false; this.muted = false; this.build(true);
     if (this.ready) this.start();
     // 1.5秒たっても再生されなければ、音を消して再生を試す。3.5秒でもだめなら、タップ表示を出す
     clearTimeout(this.timer); clearTimeout(this.timer3);
@@ -582,6 +586,7 @@ function activate(i){
   log('video_show', { index: i, video_id: it.id, kind: it.kind, type: it.type, from_index: from >= 0 ? from : '', note: from >= 0 ? dir : 'first' });
   S.players[i].play();
   ensureAhead(i);
+  const old = S.players[i - 3]; if (old && old.release) old.release();
   if (TEST_LOCK_S > 0 && it.test){
     const f = $('feed'); f.style.overflowY = 'hidden'; clearTimeout(S.lk);
     log('lock_start', { index: i, video_id: it.id, kind: it.kind, note: 'lock_s=' + TEST_LOCK_S });
@@ -614,7 +619,8 @@ function addSlide(){
   const onEnded = () => { S.endedCount[i]++; log('video_ended', { index: i, video_id: it.id, kind: it.kind, note: 'count=' + S.endedCount[i] }); };
   const hooks = { play: () => playOn(i), stop: () => playOff(i), dur: d => setDur(i, d) };
   const P = it.type === 'file' ? FilePlayer : it.type === 'youtube' ? YTPlayer : it.type === 'tiktok' ? TTPlayer : DemoPlayer;
-  S.players.push(new P(it, slide, S.cfg.dur, onEnded, hooks));
+  const pl = new P(it, slide, S.cfg.dur, onEnded, hooks); S.players.push(pl);
+  if (pl.preload) pl.preload();
   S.io.observe(slide);
 }
 // 出し始める時刻（既定15分）になったとき、まだ見ていない先読み分を作り直して、次にスワイプしたとき必ず関係ない動画が出るようにする
