@@ -74,36 +74,40 @@ textarea{width:100%;min-height:180px;background:var(--surface);color:var(--fg);b
 <main id="setup" class="wrap">
   <header>
     <h1>スクロール視聴実験</h1>
+    <p class="lead" style="margin:0">お題：TOEICの勉強法</p>
     <p class="lead">縦にスクロールして次の動画を見る画面です。後ろにいくほど、お題と関係のない動画の割合が増えます。</p>
   </header>
-  <p id="fileWarn" class="lead" style="color:var(--rel)" hidden>このファイルを直接開いているため、YouTubeの動画は再生されません（エラー153）。Webに置くか、パソコンで簡単なサーバーを起動して、http:// のアドレスで開いてください。</p>
+  <p id="ttWarn" class="lead" style="color:var(--rel)" hidden></p>
+  <p id="fileWarn" class="lead" style="color:var(--rel)" hidden>このファイルを直接開いているため、YouTubeやTikTokの動画は再生されません（YouTubeはエラー153）。Webに置くか、パソコンで簡単なサーバーを起動して、http:// のアドレスで開いてください。</p>
 
   <section class="grid" aria-label="設定">
     <label for="pid">参加者ID<input id="pid" type="text" value="P01" autocomplete="off"></label>
     <label for="limit">視聴時間（分）<input id="limit" type="number" value="30" min="1" max="120" inputmode="numeric"></label>
-    <label for="n">動画の本数<input id="n" type="number" value="14" min="5" max="200" inputmode="numeric"></label>
     <label for="pmax">最後の割合（関係ない%）<input id="pmax" type="number" value="90" min="0" max="100" inputmode="numeric"></label>
-    <label for="k">はじめの関係ある動画（本）<input id="k" type="number" value="2" min="0" max="50" inputmode="numeric"></label>
+    <label for="kt">関係ない動画を出し始める（分）<input id="kt" type="number" value="15" min="0" max="120" inputmode="numeric"></label>
     <label for="dur">試作動画の長さ（秒）<input id="dur" type="number" value="8" min="2" max="120" inputmode="numeric"></label>
     <label for="fast">すぐスキップの基準（秒）<input id="fast" type="number" value="3" min="1" max="30" inputmode="numeric"></label>
   </section>
   <label class="check" for="debug"><input id="debug" type="checkbox" checked>実験者用の表示を出す</label>
 
   <section class="plan" aria-label="動画の並び">
-    <h2>この設定での並び（左が1本目）</h2>
+    <h2>関係ない動画が出る割合（1マスが1分）</h2>
     <div id="strip" class="strip" role="img" aria-label="動画の並び"></div>
     <div class="legend"><span><b style="background:var(--rel)"></b>お題に関係ある</span><span><b style="background:var(--unrel)"></b>関係ない</span></div>
     <div id="stat" class="stat"></div>
+    <div id="cat" class="stat" style="color:var(--muted);font-size:.8rem"></div>
   </section>
 
   <button id="start" class="btn" type="button">視聴を始める</button>
 
   <details>
     <summary>本物の動画に差し替えるには</summary>
-    <p>ファイル先頭付近の <code>REAL</code> に、動画のIDを並べます。今は、関係ある5本と関係ない6本が入っています。本番は、各40本ほど必要です。TikTokは、URLの /video/ のあとの数字がIDです。このファイルは、Webに置いたときだけ動画が再生されます。</p>
+    <p>ファイル先頭付近の <code>REAL</code> に、動画のIDを並べます。今は、関係ある50本が入っています。関係ない動画は、これから入れます。TikTokは、URLの /video/ のあとの数字がIDです。このファイルは、Webに置いたときだけ動画が再生されます。</p>
     <pre>const REAL = {
   related:   [{type:'youtube', id:'動画ID'},
               {type:'tiktok', id:'投稿ID（数字）'},
+              {type:'tiktok', url:'https://www.tiktok.com/@名前/video/数字'},
+              {type:'youtube', id:'動画ID', test:true},
               {type:'file', src:'videos/r01.mp4'}],
   unrelated: [{type:'youtube', id:'動画ID'}]
 };</pre>
@@ -147,21 +151,120 @@ textarea{width:100%;min-height:180px;background:var(--surface);color:var(--fg);b
 <script>
 (() => {
 'use strict';
-// 本物の動画を使うときはここに並べる（空なら試作用の動画）
 const REAL = {
+  // TOEICの勉強法（フィード条件）の関係ある動画50本。
+  // test: true は、再生テストに使う動画です（Q番号は問題メモの番号。Q6は外しました）。
   related: [
-    { type: 'youtube', id: '3PfKqWSsHyc' }, { type: 'youtube', id: 'nFihqqgZiws' }, { type: 'youtube', id: 'H9i4YfKhkTI' },
-    { type: 'youtube', id: 'hdTpRtfYTEs' }, { type: 'youtube', id: 'TUW3QV1mWIk' }
+    { type: 'tiktok', url: 'https://www.tiktok.com/@umeka0320/video/7515001742120045831' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@mocha.asakatsu/video/7519872282219629845' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@english_hanah/video/7456408068838968594' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@kietson23/video/7576919230881205522' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@yuha_english05/video/7603007940588588296', test: true },  // Q1 Part5は1問何秒で解けるようにならないといけないのか？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@toeic_kei_doit/video/7484987114208103687' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bear__english/video/7690478462171106581' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@taitond_toeic/video/7365848709256580353' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@ryokuntoeic/video/7266734902102543617' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@toeicmugittan/video/7678765662512188692', test: true },  // Q2 リスニング最初の1分半どう使うか？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@mocha.asakatsu/video/7569969881471405332', test: true },  // Q3 Part7は
+    { type: 'tiktok', url: 'https://www.tiktok.com/@tony_toeic7/video/7341731002244467970' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@toeicmugittan/video/7671291932311588117' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@comoenglish/video/7534623347766824199' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@toeic900_in_aus/video/7496793591117794578' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@kumiko_english_study/video/7261147028275612930' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@comoenglish/video/7592883939253996807', test: true },  // Q4 TOEIC Part7で点数を爆伸びさせる方法として挙げられていなか
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bearblog9ma/video/7407424752282897682' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bearblog9ma/video/7403260989556198663', test: true },  // Q5 TOEIC文法問題出る1000問は収録問題数は計何問と言われていた？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bearblog9ma/video/7399994739002461458' },  // Q6 TOEICリーディング5つのコツで紹介されていた効果的な文法教材は？（外す）
+    { type: 'tiktok', url: 'https://www.tiktok.com/@amy4_med/video/7102015888399813890' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@mina_jt/video/7050688808609729794' },
+    { type: 'youtube', id: 'ZH6cIUAoGaw' },
+    { type: 'youtube', id: 'rAeFNdS6vAQ' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@maari_english/video/7590704014258441493' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@muro_english/video/7468254225433136392' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@umeka0320/video/7523887798957444370' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@mocha.asakatsu/video/7551018573867584784', test: true },  // Q7 「リスニングのコツ3選で勉強の順番はPart1～4でどの順番と言って
+    { type: 'tiktok', url: 'https://www.tiktok.com/@english_hanah/video/7458227287922576648', test: true },  // Q8 「時間を無駄にする英語勉強法TOP3」で1位は何か？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@umeka0320/video/7532826397551693063', test: true },  // Q9 「TOEICリスニング満点取れた勉強法3選」で挙げられていなかったも
+    { type: 'tiktok', url: 'https://www.tiktok.com/@nemotoishappy/video/7482706874756795655' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@mocha.asakatsu/video/7558831325524905237' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@yuha_english05/video/7619872526155484423' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@english_hanah/video/7458577638987189522' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@comoenglish/video/7496428820572966151' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bear__english/video/7644497233827843348' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@eigo.nonote/video/7666804191980997909' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bearblog9ma/video/7434496254488431880' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@toeicmugittan/video/7688742426621775124' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@tomotoeic/video/7642519736852483335' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@english_hanah/video/7459704071528762632', test: true },  // Q10 「だれでも英語耳になれるリスニング勉強法」でリスニングに必要なスキル
+    { type: 'tiktok', url: 'https://www.tiktok.com/@yuto_gakutika/video/7639240534292319495' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@yuri_english/video/7504996285003353351' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bearblog9ma/video/7546185112027663633' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@english_tsubasa/video/7538799597137841426' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@toeicmugittan/video/7711335662657539349' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@comoenglish/video/7510884568308780306' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@english_yui/video/7576986712098868498' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@comoenglish/video/7537618315926310152' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@maari_english/video/7514648901471751442', test: true },  // Q11 点数が爆伸びする金フレの使い方として挙げられていないものは？
   ],
   unrelated: [
-    { type: 'youtube', id: 'pWPzUwi34rs' }, { type: 'youtube', id: 'MMsYpJp_GCA' }, { type: 'youtube', id: '7csnhblKvic' },
-    { type: 'youtube', id: 'F5c1sctaQnk' }, { type: 'youtube', id: 'Fykfl5XsWYQ' }, { type: 'youtube', id: 'xqgio43j5i4' },
-    { type: 'tiktok', id: '7592914009116953876' }
+    { type: 'tiktok', url: 'https://www.tiktok.com/@rakko.ranking/video/7692311254542617877' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@love__dog3150/video/7580344595582618898' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@sekaiomosiro/video/7694561768026164488' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@doubutuiyashi/video/7634165104833056007' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@tamasoundss/video/7667906151035538695' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@zoo92508/video/7642670585599872264' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@neko_neko_neeeko/video/7618890218036301063' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@ssq1725781544/video/7650162627607481621' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@doubutuiyashi/video/7678663511412722952' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@user2666149059015/video/7661884341403880711' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@petbuzz_today/video/7692391296618532117' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@akka21388fi/video/7627099228401061138' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@ejjcmamcsc/video/7711543664358575373' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@yyds88680/video/7701652900665134342' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@user7341316978139/video/7710915927373565206' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bobon__official/video/7700908275969264917' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@user3814193884367/video/7709778902020820232', test: true },  // U3 トランポリンに屋根から飛んだ「○○になりたい」の動物は？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@skylark.jp/video/7710175881486011669' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@23ab70f5/video/7710081308864679190' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@xuthanhhoatong9/video/7710253059561049366' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@goosenoichinichi/video/7702446593970031879', test: true },  // U4 茶色い猫がテレビで見ていた野球は、どことどこの試合？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@user4088722576013/video/7711280019850546454' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@gogonogourmet/video/7710471413932592391' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@5e0352ba/video/7711634542716636438' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@rainking.2027/video/7692058822118051092' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@ito_diet.bodymake/video/7698187416837934356' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@sakichannel_yeah/video/7700515181180308754' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@veu.harold.2007/video/7705595360936250646' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@safari.123546/video/7711284575485447432' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@user6785447500946.fan/video/7710547393409731861' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@zonbinson99/video/7711163415170993430' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@love__cat3150/video/7709305147553336577' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bobon__official/video/7699999568208891156' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@game213901/video/7710445748760055063' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@tyata00223/video/7711315172928933126' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@snowfallsparkle/video/7688021681352232200' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@candy_tune/video/7525079537030417671' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@mayune_shiraishi/video/7033170327773400322' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@matsumoto.assistant/video/7381008681049050369' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@waybe_inc/video/7461804372742163720' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@userwwmnh74u11/video/7212891717022928130' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@tomomi043011/video/7711287085096783111' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@saikooooo4519721/video/7709835669811531014' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@xts300/video/7471524204626595080' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@user65512614255421/video/7699702758395399446', test: true },  // U2 素敵な店員さん5位は？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@yukineko0077/video/7699819572819397909' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@buzz1movie/video/7710424290952367380', test: true },  // U1 日本語をしゃべる猫トップ5の2位は？
+    { type: 'tiktok', url: 'https://www.tiktok.com/@oto.monogatari/video/7708347150412811528' },
+    { type: 'tiktok', url: 'https://www.tiktok.com/@bobon__official/video/7711396151014018324', test: true },  // U5 仕事に遅刻した時の動画で、着いたらすぐ何と言う？
   ]
 };
 const DEMO_REL = ['お湯の温度','豆の挽き目','ドリッパーの選び方','蒸らしの時間','注ぐ速さ','ペーパーの湿らせ方','豆の量と比率','淹れたあとの保存','スケールの使い方','フィルターの種類'];
 const DEMO_UNREL = ['猫のいる暮らし','筋トレ10分','京都の街歩き','ゲーム実況','ダンスのコツ','棚をDIY','スニーカー紹介','星空タイムラプス','犬の散歩','カレーの作り方','ギター弾いてみた','電車の車窓'];
-const TASK = 'お題：ハンドドリップでコーヒーを淹れる';
+const TASK = 'お題：TOEICの勉強法';
+// 再生テストに使う動画を並べる範囲。関係ある動画は「はじめの何本」、関係ない動画は「関係ない動画のはじめの何本」
+const TEST_SPAN = 25, TEST_SPAN_UNREL = 10;
+// 問題あり動画が出ている最初の数秒は、スクロールできないようにする（0なら使わない）。動画の内容を見たかどうかまでは、強制できない
+const TEST_LOCK_S = 0;
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, Number.isFinite(v) ? v : a));
@@ -170,41 +273,71 @@ function hashSeed(s){ let h = 2166136261; for (const c of s){ h ^= c.charCodeAt(
 function rng(a){ return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function shuffle(arr, r){ const a = arr.slice(); for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
-// 関係ない動画の割合を、k本目以降 0 → pMax へ直線的に増やす。誤差を足し込んで、割合どおりの本数になるように並べる
-function planKinds(n, k, pMax){
-  const kinds = []; let acc = 0;
-  for (let i = 0; i < n; i++){
-    const p = i < k ? 0 : pMax * (i - k) / Math.max(1, n - 1 - k);
-    acc += p;
-    if (acc >= 1){ kinds.push('unrelated'); acc -= 1; } else kinds.push('related');
-  }
-  return kinds;
+// 関係ない動画が出る確率。視聴開始から start 分まで0、そこから視聴時間の終わり（limit 分）まで、pMax へ直線的に増やす（経過時間で決める）
+function pAt(t, c){
+  const t0 = c.start * 60, t1 = Math.max(t0 + 1, c.limit * 60);
+  return t <= t0 ? 0 : c.pmax * Math.min(1, (t - t0) / (t1 - t0));
 }
+const BUF = 2;   // いま見ている動画の、何本先まで用意しておくか
 
 function readCfg(){
-  return { pid: $('pid').value.trim() || 'P00', n: clamp(+$('n').value, 5, 200), limit: clamp(+$('limit').value, 1, 120),
-    pmax: clamp(+$('pmax').value, 0, 100) / 100, k: clamp(+$('k').value, 0, 50), dur: clamp(+$('dur').value, 2, 120), fast: clamp(+$('fast').value, 1, 30), debug: $('debug').checked };
+  return { pid: $('pid').value.trim() || 'P00', limit: clamp(+$('limit').value, 1, 120),
+    pmax: clamp(+$('pmax').value, 0, 100) / 100, start: clamp(+$('kt').value, 0, 120), dur: clamp(+$('dur').value, 2, 120), fast: clamp(+$('fast').value, 1, 30), debug: $('debug').checked };
 }
 
 function renderPlan(){
-  const c = readCfg(), kinds = planKinds(c.n, c.k, c.pmax);
-  $('strip').innerHTML = kinds.map(k => '<i class="' + (k === 'unrelated' ? 'u' : '') + '"></i>').join('');
-  const u = kinds.filter(k => k === 'unrelated').length, tail = kinds.slice(-10), tu = tail.filter(k => k === 'unrelated').length;
-  $('stat').textContent = '関係ない動画：' + u + ' / ' + c.n + '本　最後の10本のうち ' + tu + '本';
+  const c = readCfg(), N = Math.max(1, Math.round(c.limit));
+  $('strip').innerHTML = Array.from({ length: N }, (_, m) => {
+    const pc = Math.round(pAt((m + 0.5) * 60, c) * 100);
+    return '<i style="background:linear-gradient(to top,var(--unrel) ' + pc + '%,var(--rel) ' + pc + '%)"></i>';
+  }).join('');
+  $('stat').textContent = '0〜' + Math.min(c.start, c.limit) + '分は関係ある動画だけ。' + c.start + '分をすぎた最初のスワイプで、全員必ず関係ない動画が出ます。その後、' + c.limit + '分に向けて、関係ない動画の割合が 0% から ' + Math.round(c.pmax * 100) + '% へ増えます。';
+  const cnt = (a, t) => a.filter(x => !!x.test === t).length;
+  $('cat').textContent = '登録した動画：関係ある（問題あり ' + cnt(REAL.related, true) + '本・問題なし ' + cnt(REAL.related, false) + '本）　関係ない（問題あり ' + cnt(REAL.unrelated, true) + '本・問題なし ' + cnt(REAL.unrelated, false) + '本）';
 }
 
-function buildItems(c){
-  const r = rng(hashSeed(c.pid)), kinds = planKinds(c.n, c.k, c.pmax);
+// TikTokは、id か url（/video/数字）から動画IDを取り出す。取り出せないものは missing にする
+const ttIdOf = x => { if (x.id) return String(x.id); const m = /\/video\/(\d+)/.exec(x.url || ''); return m ? m[1] : ''; };
+function norm(x, kind, i){
+  const o = Object.assign({}, x, { kind, title: x.title || '' });
+  if (x.type === 'tiktok'){
+    const t = ttIdOf(x); o.missing = !t;
+    const sc = /tiktok\.com\/([^/?#]+)/.exec(x.short || '');
+    o.id = t || ('short:' + (sc ? sc[1] : kind[0] + (i + 1)));
+  } else o.id = x.id || x.src || (kind[0] + (i + 1));
+  return o;
+}
+function makeSeq(c){
+  const r = rng(hashSeed(c.pid));
   const demo = (list, kind) => list.map((t, i) => ({ kind, type: 'demo', id: kind[0] + String(i + 1).padStart(2, '0'), title: t }));
   const pool = {
-    related: REAL.related.length ? REAL.related.map((x, i) => Object.assign({ kind: 'related', title: x.title || '', id: x.id || x.src || 'r' + (i + 1) }, x)) : demo(DEMO_REL, 'related'),
-    unrelated: REAL.unrelated.length ? REAL.unrelated.map((x, i) => Object.assign({ kind: 'unrelated', title: x.title || '', id: x.id || x.src || 'u' + (i + 1) }, x)) : demo(DEMO_UNREL, 'unrelated')
+    related: REAL.related.length ? REAL.related.map((x, i) => norm(x, 'related', i)) : demo(DEMO_REL, 'related'),
+    unrelated: REAL.unrelated.length ? REAL.unrelated.map((x, i) => norm(x, 'unrelated', i)) : demo(DEMO_UNREL, 'unrelated')
   };
-  const order = { related: shuffle(pool.related, r), unrelated: shuffle(pool.unrelated, r) }, pos = { related: 0, unrelated: 0 };
-  return kinds.map((kind, index) => {
-    const list = order[kind], base = list[pos[kind] % list.length]; pos[kind]++;
-    return Object.assign({}, base, { index, kind, round: Math.floor((pos[kind] - 1) / list.length) });
-  });
+  // test: true の動画（再生テストに使う動画）は、はじめの span 本のなかで、ほぼ等間隔にばらけて並ぶ（人ごとに順番は変わる）
+  const spread = (list, span) => {
+    const t = shuffle(list.filter(x => x.test), r), o = shuffle(list.filter(x => !x.test), r);
+    if (!t.length) return o;
+    const sp = Math.max(t.length, span), used = new Set(), at = [];
+    t.forEach(x => { const j = at.length; let p = Math.floor((j + 0.15 + 0.7 * r()) * sp / t.length); while (used.has(p)) p++; used.add(p); at.push([p, x]); });
+    const out = o.slice(); at.sort((a, b) => a[0] - b[0]).forEach(([p, x]) => out.splice(p, 0, x));
+    return out;
+  };
+  const order = { related: spread(pool.related, TEST_SPAN), unrelated: spread(pool.unrelated, TEST_SPAN_UNREL) }, pos = { related: 0, unrelated: 0 };
+  let acc = 0, index = 0;
+  const testIds = pool.related.concat(pool.unrelated).filter(x => x.test).map(x => x.id);
+  // 次の1本を、その時点の経過時間から決める。確率を足し込んで、割合どおりに、ほぼ等間隔で関係ない動画を入れる
+  return { testIds, force: false, rewind(removed){ removed.forEach(x => { pos[x.kind]--; }); index -= removed.length; }, next(){
+    const tNow = (performance.now() - S.t0) / 1000;
+    let kind = 'related';
+    if (this.force){ this.force = false; kind = 'unrelated'; acc = 0; }   // 出し始める時刻をすぎたあと、最初の1本は、全員必ず関係ない動画
+    else if (tNow > c.start * 60){ acc += pAt(tNow, c); if (acc >= 1){ kind = 'unrelated'; acc -= 1; } }
+    // 動画が足りなくなって2周目に入ったら、再生テスト用の動画は出さない（もう一度見ると、答えやすくなるため）
+    const list = order[kind], k2 = pos[kind]++; let base, round;
+    if (k2 < list.length){ base = list[k2]; round = 0; }
+    else { const rest = list.filter(x => !x.test), pl = rest.length ? rest : list; base = pl[(k2 - list.length) % pl.length]; round = 1 + Math.floor((k2 - list.length) / pl.length); }
+    return Object.assign({}, base, { index: index++, kind, round });
+  } };
 }
 
 /* ---- プレーヤー（試作用 / 動画ファイル / YouTube） ---- */
@@ -314,6 +447,13 @@ class TTPlayer {
     });
     host.appendChild(this.tap);
   }
+  showMissing(){
+    if (this.msg) return;
+    const d = document.createElement('div'); d.className = 'demo';
+    d.innerHTML = '<div class="t"></div><div class="s">TikTokの動画IDが未設定です（REAL の id か url を入れてください）</div><div class="s"></div>';
+    d.querySelector('.t').textContent = '動画ID未設定'; d.lastChild.textContent = this.item.short || '';
+    this.host.appendChild(d); this.msg = d;
+  }
   build(){
     if (this.ifr) return;
     const f = document.createElement('iframe');
@@ -342,6 +482,11 @@ class TTPlayer {
   }
   start(){ this.send('seekTo', 0); this.send('play'); }
   play(){
+    if (this.item.missing){
+      this.showMissing();
+      log('video_error', { index: this.item.index, video_id: this.item.id, kind: this.item.kind, note: 'tiktok_id_missing' });
+      return;
+    }
     this.want = true; this.playing = false; this.build();
     if (this.ready) this.start();
     // 準備完了の通知が来なくても、2.5秒たっても再生されなければタップ表示を出す
@@ -381,7 +526,7 @@ function finishScroll(){
 }
 function onFeedScroll(){
   if (!S || S.ended) return;
-  trackScroll();
+  trackScroll(); S.lastScrollAt = performance.now();
   YTS.hideTemp(); clearTimeout(S.sc);
   S.sc = setTimeout(() => { finishScroll(); if (YTS.aligned()) YTS.showIfReady(); }, 150);
 }
@@ -431,6 +576,12 @@ function activate(i){
     playMs: 0, playSince: null, firstPlayAt: null, endedAtEnter: S.endedCount[i], scrollId: S.sg ? S.sg.id : null, scrollS: null, scrollPx: null });
   log('video_show', { index: i, video_id: it.id, kind: it.kind, type: it.type, from_index: from >= 0 ? from : '', note: from >= 0 ? dir : 'first' });
   S.players[i].play();
+  ensureAhead(i);
+  if (TEST_LOCK_S > 0 && it.test){
+    const f = $('feed'); f.style.overflowY = 'hidden'; clearTimeout(S.lk);
+    log('lock_start', { index: i, video_id: it.id, kind: it.kind, note: 'lock_s=' + TEST_LOCK_S });
+    S.lk = setTimeout(() => { f.style.overflowY = ''; log('lock_end', { index: i, video_id: it.id, kind: it.kind }); }, TEST_LOCK_S * 1000);
+  }
   updateDbg();
 }
 function leave(i, why){
@@ -448,30 +599,49 @@ function updateDbg(){
   const it = S.items[S.active]; if (!it) return;
   const el = ((performance.now() - S.t0) / 1000), m = Math.floor(el / 60), s = Math.floor(el % 60);
   const unrelSoFar = S.items.slice(0, S.active + 1).filter(x => x.kind === 'unrelated').length;
-  $('dbg').textContent = (S.active + 1) + ' / ' + S.items.length + ' 本目\n' + (it.kind === 'related' ? '関係ある' : '関係ない') + '（' + it.type + '）\n経過 ' + m + ':' + String(s).padStart(2, '0') + ' / ' + S.cfg.limit + ':00\n関係ない累計 ' + unrelSoFar + '本';
+  $('dbg').textContent = (S.active + 1) + ' 本目\n' + (it.kind === 'related' ? '関係ある' : '関係ない') + '（' + it.type + '）' + (it.test ? ' 問題あり' : '') + '\n経過 ' + m + ':' + String(s).padStart(2, '0') + ' / ' + S.cfg.limit + ':00\n関係ない累計 ' + unrelSoFar + '本\n今の確率 ' + Math.round(pAt(m * 60 + s, S.cfg) * 100) + '%';
 }
+function addSlide(){
+  const it = S.gen.next(), i = it.index, feed = $('feed');
+  S.items.push(it); S.endedCount.push(0); S.durs.push(null);
+  const slide = document.createElement('section'); slide.className = 'slide'; slide.dataset.i = i;
+  feed.appendChild(slide);
+  const onEnded = () => { S.endedCount[i]++; log('video_ended', { index: i, video_id: it.id, kind: it.kind, note: 'count=' + S.endedCount[i] }); };
+  const hooks = { play: () => playOn(i), stop: () => playOff(i), dur: d => setDur(i, d) };
+  const P = it.type === 'file' ? FilePlayer : it.type === 'youtube' ? YTPlayer : it.type === 'tiktok' ? TTPlayer : DemoPlayer;
+  S.players.push(new P(it, slide, S.cfg.dur, onEnded, hooks));
+  S.io.observe(slide);
+}
+// 出し始める時刻（既定15分）になったとき、まだ見ていない先読み分を作り直して、次にスワイプしたとき必ず関係ない動画が出るようにする
+function rebuildAhead(){
+  const keep = S.active + 1;
+  for (let i = S.items.length - 1; i >= keep; i--){
+    const sl = document.querySelector('.slide[data-i="' + i + '"]');
+    if (sl){ S.io.unobserve(sl); sl.remove(); }
+  }
+  const removed = S.items.splice(keep); S.players.length = keep; S.endedCount.length = keep; S.durs.length = keep;
+  S.gen.rewind(removed); S.gen.force = true; ensureAhead(S.active);
+  log('unrelated_onset', { index: keep, note: 'elapsed_s=' + Math.round((performance.now() - S.t0) / 1000) });
+}
+function ensureAhead(i){ while (S.items.length < i + 1 + BUF) addSlide(); }
 function start(){
-  const cfg = readCfg(), items = buildItems(cfg), feed = $('feed');
+  const cfg = readCfg(), feed = $('feed');
   feed.innerHTML = '';
-  S = { cfg, items, players: [], endedCount: items.map(() => 0), durs: items.map(() => null), events: [], visits: [], scrolls: [], touches: [],
+  S = { cfg, items: [], players: [], endedCount: [], durs: [], events: [], visits: [], scrolls: [], touches: [],
     sg: null, sgId: 0, tp: null, active: -1, ended: false, t0: performance.now(), startedAt: new Date() };
-  items.forEach((it, i) => {
-    const slide = document.createElement('section'); slide.className = 'slide'; slide.dataset.i = i;
-    feed.appendChild(slide);
-    const onEnded = () => { S.endedCount[i]++; log('video_ended', { index: i, video_id: it.id, kind: it.kind, note: 'count=' + S.endedCount[i] }); };
-    const hooks = { play: () => playOn(i), stop: () => playOff(i), dur: d => setDur(i, d) };
-    const P = it.type === 'file' ? FilePlayer : it.type === 'youtube' ? YTPlayer : it.type === 'tiktok' ? TTPlayer : DemoPlayer;
-    S.players.push(new P(it, slide, cfg.dur, onEnded, hooks));
-  });
+  S.gen = makeSeq(cfg); S.testIds = S.gen.testIds;
   S.io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting && e.intersectionRatio >= 0.6) activate(+e.target.dataset.i); }), { root: feed, threshold: [0.6] });
-  feed.querySelectorAll('.slide').forEach(s => S.io.observe(s));
+  for (let i = 0; i <= BUF; i++) addSlide();
   $('setup').hidden = true; $('endScreen').hidden = true; $('feedScreen').hidden = false;
   $('dbg').hidden = !cfg.debug;
   feed.onscroll = onFeedScroll;
   feed.scrollTop = 0;
-  log('session_start', { note: 'pid=' + cfg.pid + ' n=' + cfg.n + ' limit_min=' + cfg.limit + ' pmax=' + cfg.pmax + ' k=' + cfg.k + ' fast_s=' + cfg.fast + ' iso=' + S.startedAt.toISOString() });
+  log('session_start', { note: 'pid=' + cfg.pid + ' limit_min=' + cfg.limit + ' unrelated_from_min=' + cfg.start + ' pmax=' + cfg.pmax + ' fast_s=' + cfg.fast + ' iso=' + S.startedAt.toISOString() });
   activate(0);
-  S.timer = setInterval(() => { updateDbg(); if ((performance.now() - S.t0) / 1000 >= cfg.limit * 60) end('time_limit'); }, 250);
+  S.timer = setInterval(() => {
+    updateDbg();
+    if (!S.onset && (performance.now() - S.t0) / 1000 >= cfg.start * 60 && (performance.now() - (S.lastScrollAt || 0)) > 500){ S.onset = true; rebuildAhead(); }
+     if ((performance.now() - S.t0) / 1000 >= cfg.limit * 60) end('time_limit'); }, 250);
   try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(w => { S.wake = w; }).catch(() => {}); } catch (e) {}
   try { feed.focus(); } catch (e) {}
 }
@@ -492,7 +662,9 @@ function visitRows(){
     play_ratio: v.dur ? num(v.play / v.dur, 3) : '', start_delay_s: num(v.delay, 3),
     loops: v.loops, completed: v.loops > 0 ? 1 : 0, direction: v.dir, leave_reason: v.why,
     scroll_before_s: num(v.scrollS, 3), scroll_before_px: v.scrollPx == null ? '' : Math.round(v.scrollPx),
-    fast_skip: v.why === 'scroll' ? (v.dwell < fast ? 1 : 0) : ''
+    fast_skip: v.why === 'scroll' ? (v.dwell < fast ? 1 : 0) : '',
+    test: S.items[v.index].test ? 1 : 0,
+    category: v.kind + (S.items[v.index].test ? '_test' : '_other')
   }));
 }
 function metrics(){
@@ -507,6 +679,7 @@ function metrics(){
   for (let i = 1; i < pts.length; i++) gap = Math.max(gap, pts[i] - pts[i - 1]);
   const dwellAll = vs.reduce((a, v) => a + v.dwell, 0), playAll = vs.reduce((a, v) => a + v.play, 0);
   const ratios = done.filter(v => v.dur).map(v => v.play / v.dur);
+  const tIds = new Set(S.testIds), seenT = new Set(vs.filter(v => tIds.has(v.id)).map(v => v.id));
   return {
     pid: S.cfg.pid, session_s: T, n_visits: vs.length, n_videos: new Set(vs.map(v => v.index)).size, n_back: vs.filter(v => v.dir === 'up').length,
     n_related: vs.filter(v => v.kind === 'related').length, n_unrelated: vs.filter(v => v.kind === 'unrelated').length,
@@ -519,7 +692,8 @@ function metrics(){
     fast_threshold_s: fast, fast_skip_n: done.filter(v => v.dwell < fast).length, fast_skip_rate: done.length ? done.filter(v => v.dwell < fast).length / done.length : null, fast_skip_max_streak: maxStreak,
     complete_rate: done.length ? done.filter(v => v.loops > 0).length / done.length : null, loops_total: vs.reduce((a, v) => a + v.loops, 0),
     scroll_n: sc.length, scroll_total_s: sc.reduce((a, g) => a + g.s, 0), scroll_median_s: median(sc.map(g => g.s)), scroll_median_px: median(sc.map(g => g.px)),
-    touch_n: S.touches.length, tap_n: S.touches.filter(t => t.kind === 'tap').length, longest_no_touch_s: gap
+    touch_n: S.touches.length, tap_n: S.touches.filter(t => t.kind === 'tap').length, longest_no_touch_s: gap,
+    test_total: tIds.size, test_reached: seenT.size, test_missed: Array.from(tIds).filter(x => !seenT.has(x)).join(' ')
   };
 }
 const SUMMARY_LABELS = [
@@ -531,7 +705,8 @@ const SUMMARY_LABELS = [
   ['play_share', '滞在のうち実際に再生していた割合', 2], ['play_ratio_median', '動画の長さに対する再生時間の割合・中央値', 2],
   ['fast_skip_rate', 'すぐスキップした割合', 2], ['fast_skip_max_streak', 'すぐスキップが続いた最大の回数', 0], ['complete_rate', '最後まで見た割合', 2],
   ['scroll_n', 'スクロールの回数', 0], ['scroll_total_s', 'スクロールしていた時間の合計（秒）', 1], ['scroll_median_s', '1回のスクロール時間・中央値（秒）', 2],
-  ['touch_n', '画面に触れた回数', 0], ['tap_n', '　うち、タップ（スワイプ以外）', 0], ['longest_no_touch_s', '触れていない最長の時間（秒）', 1]
+  ['touch_n', '画面に触れた回数', 0], ['tap_n', '　うち、タップ（スワイプ以外）', 0], ['longest_no_touch_s', '触れていない最長の時間（秒）', 1],
+  ['test_total', '再生テスト用の動画の本数', 0], ['test_reached', '　そのうち、画面に出た本数', 0]
 ];
 function buildOutputs(){
   const m = metrics(), cols = Object.keys(m);
@@ -552,7 +727,7 @@ function end(reason){
   if (!S || S.ended) return;
   finishScroll();
   if (S.active >= 0) leave(S.active, 'end');
-  S.ended = true; S.tEnd = performance.now(); clearInterval(S.timer); S.io.disconnect();
+  S.ended = true; clearTimeout(S.lk); $('feed').style.overflowY = ''; S.tEnd = performance.now(); clearInterval(S.timer); S.io.disconnect();
   S.players.forEach(p => p.pause());
   log('session_end', { note: reason });
   try { if (S.wake) S.wake.release(); } catch (e) {}
@@ -586,8 +761,10 @@ $('dlAll').addEventListener('click', () => {
 });
 document.addEventListener('visibilitychange', () => { if (S && !S.ended) log(document.hidden ? 'page_hidden' : 'page_visible'); });
 bindTouch();
-['pid','n','limit','pmax','k','dur','fast'].forEach(id => $(id).addEventListener('input', renderPlan));
-if (location.protocol === 'file:' && [].concat(REAL.related, REAL.unrelated).some(x => x.type === 'youtube')) $('fileWarn').hidden = false;
+['pid','limit','pmax','kt','dur','fast'].forEach(id => $(id).addEventListener('input', renderPlan));
+if (location.protocol === 'file:' && [].concat(REAL.related, REAL.unrelated).some(x => x.type === 'youtube' || x.type === 'tiktok')) $('fileWarn').hidden = false;
+{ const miss = [].concat(REAL.related, REAL.unrelated).filter(x => x.type === 'tiktok' && !ttIdOf(x)).length;
+  if (miss){ $('ttWarn').textContent = 'TikTokの動画IDが未設定の動画が ' + miss + '本あります。このままでは再生されず、「動画ID未設定」と表示されます。'; $('ttWarn').hidden = false; } }
 renderPlan();
 window.__feedTest = { get S(){ return S; }, end, activate };
 })();
