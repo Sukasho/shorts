@@ -595,8 +595,13 @@ function activate(i){
   log('video_show', { index: i, video_id: it.id, kind: it.kind, type: it.type, from_index: from >= 0 ? from : '', note: from >= 0 ? dir : 'first' });
   S.players[i].play();
   ensureAhead(i);
-  const nx = S.players[i + 1]; if (nx && nx.preload) nx.preload();
-  const old = S.players[i - 2]; if (old && old.release) old.release();
+  // 先読みと片づけは、スクロールが止まって少しあとに行う。止まった直後に重い処理をすると、スクロールの最後が、もたつくため
+  clearTimeout(S.pl);
+  S.pl = setTimeout(() => {
+    if (!S || S.ended || S.active !== i) return;
+    const nx = S.players[i + 1]; if (nx && nx.preload) nx.preload();
+    const old = S.players[i - 2]; if (old && old.release) old.release();
+  }, 700);
   if (TEST_LOCK_S > 0 && it.test){
     const f = $('feed'); f.style.overflowY = 'hidden'; clearTimeout(S.lk);
     log('lock_start', { index: i, video_id: it.id, kind: it.kind, note: 'lock_s=' + TEST_LOCK_S });
